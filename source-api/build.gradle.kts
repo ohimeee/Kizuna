@@ -21,6 +21,9 @@ dependencies {
     implementation(libs.rxJava)
     implementation(libs.jsoup)
 
+    // JS engine for NovelSource (JsNovelSource)
+    implementation(libs.quickJs)
+
     implementation(libs.androidx.preference)
 
     implementation(platform(libs.androidx.compose.bom))
