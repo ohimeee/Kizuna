@@ -8,6 +8,7 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.core.security.PrivacyPreferences
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.network.NetworkPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.system.isDebugBuildType
 import tachiyomi.core.common.preference.AndroidPreferenceStore
@@ -52,6 +53,9 @@ class PreferenceModule(val app: Application) : InjektModule {
         }
         addSingletonFactory {
             ReaderPreferences(get())
+        }
+        addSingletonFactory {
+            NovelReaderPreferences(get())
         }
         addSingletonFactory {
             TrackPreferences(get())
