@@ -1,0 +1,15 @@
+-- Add entry_links table for cross-linking a comic entry to its novel counterpart (or vice versa)
+CREATE TABLE entry_links(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    entry_id_a INTEGER NOT NULL,
+    entry_id_b INTEGER NOT NULL,
+    relation_type TEXT NOT NULL DEFAULT 'adaptation',
+    FOREIGN KEY(entry_id_a) REFERENCES mangas (_id)
+    ON DELETE CASCADE,
+    FOREIGN KEY(entry_id_b) REFERENCES mangas (_id)
+    ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX entry_links_pair_index ON entry_links(entry_id_a, entry_id_b);
+CREATE INDEX entry_links_entry_id_a_index ON entry_links(entry_id_a);
+CREATE INDEX entry_links_entry_id_b_index ON entry_links(entry_id_b);

@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,6 +42,7 @@ import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
@@ -60,6 +63,8 @@ import mihon.feature.migration.config.MigrationConfigScreen
 import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.presentation.core.screens.LoadingScreen
@@ -114,6 +119,25 @@ class MangaScreen(
             }
         }
 
+        val readTheNovelLabel = stringResource(MR.strings.label_read_the_novel)
+        val readTheComicLabel = stringResource(MR.strings.label_read_the_comic)
+        LaunchedEffect(successState.linkedManga) {
+            val linked = successState.linkedManga ?: return@LaunchedEffect
+            val actionLabel = if (successState.source.contentType == SourceContentType.NOVEL) {
+                readTheComicLabel
+            } else {
+                readTheNovelLabel
+            }
+            val result = viewModel.snackbarHostState.showSnackbar(
+                message = linked.title,
+                actionLabel = actionLabel,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                navigator.push(MangaScreen(linked.id))
+            }
+        }
+
         MangaScreen(
             state = successState,
             snackbarHostState = viewModel.snackbarHostState,
@@ -165,6 +189,7 @@ class MangaScreen(
                 navigator.push(MigrationConfigScreen(successState.manga.id))
             }.takeIf { successState.manga.favorite },
             onEditNotesClicked = { navigator.push(MangaNotesScreen(manga = successState.manga)) },
+            onLinkRelatedTitleClicked = { navigator.push(LinkEntryScreen(manga = successState.manga)) },
             onMultiBookmarkClicked = viewModel::bookmarkChapters,
             onMultiMarkAsReadClicked = viewModel::markChaptersRead,
             onMarkPreviousAsReadClicked = viewModel::markPreviousChapterRead,

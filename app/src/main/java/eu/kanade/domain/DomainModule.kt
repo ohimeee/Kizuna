@@ -39,6 +39,7 @@ import mihon.domain.source.interactor.UpdateMangaFromRemote
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
+import tachiyomi.data.entrylink.EntryLinkRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.release.ReleaseServiceImpl
@@ -65,6 +66,10 @@ import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.entrylink.interactor.GetLinkedEntry
+import tachiyomi.domain.entrylink.interactor.LinkEntries
+import tachiyomi.domain.entrylink.interactor.UnlinkEntries
+import tachiyomi.domain.entrylink.repository.EntryLinkRepository
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.history.interactor.GetTotalReadDuration
@@ -166,6 +171,11 @@ class DomainModule : InjektModule {
         addFactory { SyncChaptersWithSource(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         addFactory { GetAvailableScanlators(get()) }
         addFactory { FilterChaptersForDownload(get(), get(), get()) }
+
+        addSingletonFactory<EntryLinkRepository> { EntryLinkRepositoryImpl(get()) }
+        addFactory { LinkEntries(get()) }
+        addFactory { UnlinkEntries(get()) }
+        addFactory { GetLinkedEntry(get(), get()) }
 
         addSingletonFactory<HistoryRepository> { HistoryRepositoryImpl(get()) }
         addFactory { GetHistory(get()) }

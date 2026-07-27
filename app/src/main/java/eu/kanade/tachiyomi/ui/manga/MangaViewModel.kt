@@ -71,6 +71,9 @@ import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.model.NoChaptersException
 import tachiyomi.domain.chapter.service.calculateChapterGap
 import tachiyomi.domain.chapter.service.getChapterSort
+import tachiyomi.domain.entrylink.interactor.GetLinkedEntry
+import tachiyomi.domain.entrylink.interactor.LinkEntries
+import tachiyomi.domain.entrylink.interactor.UnlinkEntries
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
@@ -115,6 +118,9 @@ class MangaViewModel(
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get(),
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
+    private val getLinkedEntry: GetLinkedEntry = Injekt.get(),
+    private val linkEntries: LinkEntries = Injekt.get(),
+    private val unlinkEntries: UnlinkEntries = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateViewModel<MangaViewModel.State>(State.Loading) {
 
@@ -213,6 +219,14 @@ class MangaViewModel(
                 }
         }
 
+        viewModelScope.launchIO {
+            getLinkedEntry.subscribe(mangaId)
+                .distinctUntilChanged()
+                .collectLatest { linkedManga ->
+                    updateSuccessState { it.copy(linkedManga = linkedManga) }
+                }
+        }
+
         observeDownloads()
 
         viewModelScope.launchIO {
@@ -256,6 +270,20 @@ class MangaViewModel(
 
             // Initial loading finished
             updateSuccessState { it.copy(isRefreshingData = false) }
+        }
+    }
+
+    /** Bonds this manga to [targetMangaId] (its comic/novel counterpart). */
+    fun linkEntry(targetMangaId: Long) {
+        viewModelScope.launchIO {
+            linkEntries.await(mangaId, targetMangaId)
+        }
+    }
+
+    fun unlinkEntry() {
+        val linkedId = successState?.linkedManga?.id ?: return
+        viewModelScope.launchIO {
+            unlinkEntries.await(mangaId, linkedId)
         }
     }
 
@@ -1126,6 +1154,7 @@ class MangaViewModel(
             val dialog: Dialog? = null,
             val hasPromptedToAddBefore: Boolean = false,
             val hideMissingChapters: Boolean = false,
+            val linkedManga: Manga? = null,
         ) : State {
             val processedChapters by lazy {
                 chapters.applyFilters(manga).toList()
