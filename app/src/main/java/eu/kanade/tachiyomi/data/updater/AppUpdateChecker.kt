@@ -40,11 +40,12 @@ class AppUpdateChecker {
     }
 }
 
+// TODO: replace with your actual GitHub org/repo once Kizuna has a public releases repo.
 val GITHUB_REPO: String by lazy {
     if (isPreviewBuildType) {
-        "mihonapp/mihon-preview"
+        "kizuna-app/kizuna-preview"
     } else {
-        "mihonapp/mihon"
+        "kizuna-app/kizuna"
     }
 }
 

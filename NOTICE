@@ -1,0 +1,70 @@
+Kizuna
+Copyright 2026 Kizuna Contributors
+
+This product includes software developed as part of the following projects:
+
+================================================================================
+Mihon (https://github.com/mihonapp/mihon)
+================================================================================
+Copyright 2024 Mihon Open Source Project
+Copyright 2015-2024 Javier Tomás
+
+Kizuna is a fork of Mihon. Substantial portions of Kizuna's codebase
+(library management, backup/restore, tracker sync, download manager,
+update-checking system, and general application architecture) originate
+from Mihon and are used under the terms of the Apache License, Version 2.0.
+A copy of that license is included in this repository as LICENSE.
+
+Significant changes made by Kizuna relative to upstream Mihon include:
+  - Addition of a "novel" content type alongside Mihon's existing
+    image-based (manga/manhwa/manhua) content type in the source/extension
+    system, including an embedded JS engine for running novel extension
+    sources.
+  - A new native text reader for novel content, separate from Mihon's
+    existing image pager/webtoon readers.
+  - A unified library, browse/extensions screen, and app-wide mode toggle
+    spanning both content types.
+  - An entry-linking feature connecting image and novel entries that are
+    adaptations of one another.
+  - Rebranding of application identifiers (app name, application ID) from
+    Mihon to Kizuna.
+
+Mihon is itself a fork of Tachiyomi (https://github.com/tachiyomiorg/tachiyomi),
+copyright Javier Tomás and contributors, also licensed under the Apache
+License, Version 2.0.
+
+================================================================================
+LNReader (https://github.com/LNReader/lnreader)
+================================================================================
+Copyright (c) 2021 Rajarshee Chatterjee
+
+Licensed under the MIT License.
+
+Kizuna's novel-reading functionality (JS extension source engine, novel
+source format, and text reader) is designed following patterns established
+by LNReader. Where LNReader source code or substantial patterns derived
+from it are incorporated directly, the applicable files retain LNReader's
+MIT copyright notice and license text alongside any Kizuna copyright, per
+the terms of the MIT License. This NOTICE file additionally credits
+LNReader as required attribution for the ideas and patterns Kizuna draws
+upon from that project.
+
+The full text of the MIT License is reproduced below for reference:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
