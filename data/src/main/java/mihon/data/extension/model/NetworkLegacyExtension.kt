@@ -2,6 +2,7 @@ package mihon.data.extension.model
 
 import android.annotation.SuppressLint
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.source.SourceContentType
 import kotlinx.serialization.Serializable
 import mihon.domain.extension.model.ExtensionStore
 
@@ -23,6 +24,7 @@ data class NetworkLegacyExtension(
         val lang: String,
         val name: String,
         val baseUrl: String,
+        val type: String? = null,
     )
 
     fun toAvailableExtension(store: ExtensionStore, storeBaseUrl: String): Extension.Available {
@@ -52,6 +54,7 @@ data class NetworkLegacyExtension(
                         name = source.name,
                         lang = source.lang,
                         baseUrl = source.baseUrl,
+                        contentType = SourceContentType.fromValue(source.type),
                     )
                 }
             },

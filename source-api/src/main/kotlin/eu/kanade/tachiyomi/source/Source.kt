@@ -27,6 +27,13 @@ interface Source {
         get() = ""
 
     /**
+     * The kind of content this source provides. Defaults to [SourceContentType.IMAGE] so that
+     * existing image (manga/manhwa/manhua) sources need no changes; novel sources override this.
+     */
+    val contentType: SourceContentType
+        get() = SourceContentType.IMAGE
+
+    /**
      * Whether the source has support for latest updates.
      */
     val supportsLatest: Boolean

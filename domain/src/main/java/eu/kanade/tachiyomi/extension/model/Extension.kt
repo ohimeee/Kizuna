@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.extension.model
 
 import android.graphics.drawable.Drawable
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceContentType
 import mihon.domain.extension.model.ExtensionStore
 import tachiyomi.domain.source.model.StubSource
 
@@ -30,7 +31,10 @@ sealed class Extension {
         val isObsolete: Boolean = false,
         val isShared: Boolean,
         val store: ExtensionStore? = null,
-    ) : Extension()
+    ) : Extension() {
+        val contentType: SourceContentType
+            get() = sources.firstOrNull()?.contentType ?: SourceContentType.IMAGE
+    }
 
     data class Available(
         override val name: String,
@@ -45,12 +49,15 @@ sealed class Extension {
         val iconUrl: String,
         val store: ExtensionStore,
     ) : Extension() {
+        val contentType: SourceContentType
+            get() = sources.firstOrNull()?.contentType ?: SourceContentType.IMAGE
 
         data class Source(
             val id: Long,
             val lang: String,
             val name: String,
             val baseUrl: String,
+            val contentType: SourceContentType = SourceContentType.IMAGE,
         ) {
             fun toStubSource(): StubSource {
                 return StubSource(
@@ -73,3 +80,14 @@ sealed class Extension {
         override val isNsfw: Boolean = false,
     ) : Extension()
 }
+
+/**
+ * The content type badge to show for this extension in Browse, or `null` if unknown
+ * (e.g. an [Extension.Untrusted] APK whose sources haven't been loaded yet).
+ */
+val Extension.contentTypeOrNull: SourceContentType?
+    get() = when (this) {
+        is Extension.Installed -> contentType
+        is Extension.Available -> contentType
+        is Extension.Untrusted -> null
+    }

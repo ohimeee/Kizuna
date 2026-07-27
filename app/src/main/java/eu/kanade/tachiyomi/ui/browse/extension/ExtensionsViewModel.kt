@@ -10,6 +10,8 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.model.contentTypeOrNull
+import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.delay
@@ -57,23 +59,27 @@ class ExtensionsViewModel(
                     .distinctUntilChanged()
                     .debounce(0.25.seconds)
                     .map { searchQueryPredicate(it ?: "") },
+                state.map { it.contentTypeFilter }
+                    .distinctUntilChanged()
+                    .map { contentTypeFilterPredicate(it) },
                 currentDownloads,
                 getExtensions.subscribe(),
-            ) { predicate, downloads, (_updates, _installed, _available, _untrusted) ->
+            ) { predicate, contentTypePredicate, downloads, (_updates, _installed, _available, _untrusted) ->
+                val filter: (Extension) -> Boolean = { predicate(it) && contentTypePredicate(it) }
                 buildMap {
-                    val updates = _updates.filter(predicate).map(extensionMapper(downloads))
+                    val updates = _updates.filter(filter).map(extensionMapper(downloads))
                     if (updates.isNotEmpty()) {
                         put(ExtensionUiModel.Header.Resource(MR.strings.ext_updates_pending), updates)
                     }
 
-                    val installed = _installed.filter(predicate).map(extensionMapper(downloads))
-                    val untrusted = _untrusted.filter(predicate).map(extensionMapper(downloads))
+                    val installed = _installed.filter(filter).map(extensionMapper(downloads))
+                    val untrusted = _untrusted.filter(filter).map(extensionMapper(downloads))
                     if (installed.isNotEmpty() || untrusted.isNotEmpty()) {
                         put(ExtensionUiModel.Header.Resource(MR.strings.ext_installed), installed + untrusted)
                     }
 
                     val languagesWithExtensions = _available
-                        .filter(predicate)
+                        .filter(filter)
                         .groupBy { it.lang }
                         .toSortedMap(LocaleHelper.comparator)
                         .map { (lang, exts) ->
@@ -140,6 +146,15 @@ class ExtensionsViewModel(
         mutableState.update {
             it.copy(searchQuery = query)
         }
+    }
+
+    private fun contentTypeFilterPredicate(filter: SourceContentType?): (Extension) -> Boolean {
+        if (filter == null) return { true }
+        return { extension -> extension.contentTypeOrNull == filter }
+    }
+
+    fun setContentTypeFilter(filter: SourceContentType?) {
+        mutableState.update { it.copy(contentTypeFilter = filter) }
     }
 
     fun updateAllExtensions() {
@@ -215,6 +230,7 @@ class ExtensionsViewModel(
         val updates: Int = 0,
         val installer: BasePreferences.ExtensionInstaller? = null,
         val searchQuery: String? = null,
+        val contentTypeFilter: SourceContentType? = null,
     ) {
         val isEmpty = items.isEmpty()
     }

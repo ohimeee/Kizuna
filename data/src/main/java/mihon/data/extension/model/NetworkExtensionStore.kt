@@ -7,6 +7,7 @@ import kotlinx.serialization.protobuf.ProtoNumber
 import mihon.data.extension.model.NetworkExtensionStore.ContentWarning
 import mihon.data.extension.model.NetworkExtensionStore.ExtensionList
 import mihon.domain.extension.model.ExtensionStore
+import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.extension.model.Extension as TachiyomiExtension
 
 @SuppressLint("UnsafeOptInUsageError")
@@ -55,6 +56,7 @@ data class NetworkExtensionStore(
         @ProtoNumber(5) val mirrorUrls: List<String> = emptyList(),
         // @ProtoNumber(6) val contentWarning: ContentWarning = ContentWarning.SAFE,
         @ProtoNumber(7) val message: String? = null,
+        @ProtoNumber(8) val contentType: String? = null,
     )
 
     @Suppress("Unused")
@@ -111,6 +113,7 @@ fun ExtensionList.toAvailableExtensions(store: ExtensionStore): List<TachiyomiEx
                     name = source.name,
                     lang = source.language,
                     baseUrl = source.homeUrl,
+                    contentType = SourceContentType.fromValue(source.contentType),
                 )
             },
             store = store,

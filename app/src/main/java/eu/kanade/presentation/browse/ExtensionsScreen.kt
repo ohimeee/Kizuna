@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.GetApp
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -52,6 +55,8 @@ import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.presentation.util.rememberRequestPackageInstallsPermissionState
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.model.contentTypeOrNull
+import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionUiModel
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsViewModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
@@ -84,6 +89,7 @@ fun ExtensionScreen(
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
+    onContentTypeFilterChange: (SourceContentType?) -> Unit = {},
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -92,41 +98,73 @@ fun ExtensionScreen(
         onRefresh = onRefresh,
         enabled = !state.isLoading,
     ) {
-        when {
-            state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
-            state.isEmpty -> {
-                val msg = if (!searchQuery.isNullOrEmpty()) {
-                    MR.strings.no_results_found
-                } else {
-                    MR.strings.empty_screen
-                }
-                EmptyScreen(
-                    stringRes = msg,
-                    modifier = Modifier.padding(contentPadding),
-                    actions = listOf(
-                        EmptyScreenAction(
-                            stringRes = MR.strings.extensionStores,
-                            icon = Icons.Outlined.Settings,
-                            onClick = { navigator.push(ExtensionStoresScreen()) },
+        Column {
+            ContentTypeFilterRow(
+                selected = state.contentTypeFilter,
+                onSelect = onContentTypeFilterChange,
+            )
+            when {
+                state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
+                state.isEmpty -> {
+                    val msg = if (!searchQuery.isNullOrEmpty()) {
+                        MR.strings.no_results_found
+                    } else {
+                        MR.strings.empty_screen
+                    }
+                    EmptyScreen(
+                        stringRes = msg,
+                        modifier = Modifier.padding(contentPadding),
+                        actions = listOf(
+                            EmptyScreenAction(
+                                stringRes = MR.strings.extensionStores,
+                                icon = Icons.Outlined.Settings,
+                                onClick = { navigator.push(ExtensionStoresScreen()) },
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }
+                else -> {
+                    ExtensionContent(
+                        state = state,
+                        contentPadding = contentPadding,
+                        onLongClickItem = onLongClickItem,
+                        onClickItemCancel = onClickItemCancel,
+                        onOpenWebView = onOpenWebView,
+                        onInstallExtension = onInstallExtension,
+                        onUninstallExtension = onUninstallExtension,
+                        onUpdateExtension = onUpdateExtension,
+                        onTrustExtension = onTrustExtension,
+                        onOpenExtension = onOpenExtension,
+                        onClickUpdateAll = onClickUpdateAll,
+                    )
+                }
             }
-            else -> {
-                ExtensionContent(
-                    state = state,
-                    contentPadding = contentPadding,
-                    onLongClickItem = onLongClickItem,
-                    onClickItemCancel = onClickItemCancel,
-                    onOpenWebView = onOpenWebView,
-                    onInstallExtension = onInstallExtension,
-                    onUninstallExtension = onUninstallExtension,
-                    onUpdateExtension = onUpdateExtension,
-                    onTrustExtension = onTrustExtension,
-                    onOpenExtension = onOpenExtension,
-                    onClickUpdateAll = onClickUpdateAll,
-                )
-            }
+        }
+    }
+}
+
+@Composable
+private fun ContentTypeFilterRow(
+    selected: SourceContentType?,
+    onSelect: (SourceContentType?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val options: List<Pair<SourceContentType?, StringResource>> = listOf(
+        null to MR.strings.all,
+        SourceContentType.IMAGE to MR.strings.label_comics,
+        SourceContentType.NOVEL to MR.strings.label_novels,
+    )
+    Row(
+        modifier = modifier
+            .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.extraSmall),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+    ) {
+        options.forEach { (value, labelRes) ->
+            FilterChip(
+                selected = selected == value,
+                onClick = { onSelect(value) },
+                label = { Text(text = stringResource(labelRes)) },
+            )
         }
     }
 }
@@ -353,7 +391,13 @@ private fun ExtensionItemContent(
         ) {
             ProvideTextStyle(value = MaterialTheme.typography.bodySmall) {
                 var hasAlreadyShownAnElement by remember { mutableStateOf(false) }
+                extension.contentTypeOrNull?.let { contentType ->
+                    hasAlreadyShownAnElement = true
+                    ContentTypeBadge(contentType)
+                }
+
                 if (extension is Extension.Installed && extension.lang.isNotEmpty()) {
+                    if (hasAlreadyShownAnElement) DotSeparatorNoSpaceText()
                     hasAlreadyShownAnElement = true
                     Text(
                         text = LocaleHelper.getSourceDisplayName(extension.lang, LocalContext.current),
@@ -404,6 +448,26 @@ private fun ExtensionItemContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ContentTypeBadge(contentType: SourceContentType, modifier: Modifier = Modifier) {
+    val (icon, label) = when (contentType) {
+        SourceContentType.IMAGE -> Icons.Outlined.Image to stringResource(MR.strings.label_comics)
+        SourceContentType.NOVEL -> Icons.Outlined.MenuBook to stringResource(MR.strings.label_novels)
+    }
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(12.dp),
+        )
+        Text(text = label)
     }
 }
 
