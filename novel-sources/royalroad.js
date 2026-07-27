@@ -2,13 +2,17 @@
 // content. Written independently against Kizuna's NovelSource contract (see
 // docs/novel-sources/README.md) — not a copy of any LNReader plugin.
 //
-// CONFIDENCE NOTE: selectors below are based on Royal Road's generally known markup
-// conventions, not a live-verified fetch (royalroad.com blocked the verification fetch with a
-// 403 tonight). Chapter list parsing is the most likely to already work correctly, since it reads
-// a JS array embedded in the page rather than guessing CSS classes. Listing/detail-page selectors
-// are the most likely to need small adjustments — check Logcat for empty results and inspect the
-// actual page source (View Source in a desktop browser) if `popularNovels`/`novelDetails` come
-// back empty.
+// Selectors verified against real page source (fetched via curl with a browser UA, since a
+// plain WebFetch got Cloudflare-blocked) after the first on-device test came back empty:
+// - Listing items are `.fiction-list-item > figure > a > img`, not a direct `<a>` child of the
+//   item as first assumed — and there's a second, duplicate-href `<a>` around the title text
+//   (inside `h2.fiction-title`) that would've thrown off the parallel title/url/cover arrays if
+//   selected too, so the figure/img path is deliberately the more specific one.
+// - The novel detail page has no `img.thumbnail` — the cover comes from a `window.fictionCover =
+//   "..."` JS variable instead, extracted the same way chapterList already reads
+//   `window.chapters`.
+// Everything else (title/author/description/genres/status/chapter-list selectors) matched the
+// original guess exactly.
 
 Register(JSON.stringify({
   id: "royalroad",
@@ -20,9 +24,9 @@ Register(JSON.stringify({
 }));
 
 function parseListing(html) {
-  var urls = selectAllAttr(html, ".fiction-list-item > a", "href");
-  var titles = selectAllAttr(html, ".fiction-list-item > a > img", "alt");
-  var covers = selectAllAttr(html, ".fiction-list-item > a > img", "src");
+  var urls = selectAllAttr(html, ".fiction-list-item figure a", "href");
+  var titles = selectAllAttr(html, ".fiction-list-item figure img", "alt");
+  var covers = selectAllAttr(html, ".fiction-list-item figure img", "src");
 
   var novels = urls.map(function (url, i) {
     return {
@@ -87,10 +91,11 @@ globalThis.source = {
     var html = Http.get(url, "{}");
     var statuses = selectAllText(html, ".label-sm");
     var rawStatus = statuses.length > 1 ? statuses[1] : (statuses[0] || "");
+    var coverMatch = html.match(/window\.fictionCover\s*=\s*"([^"]*)"/);
 
     return JSON.stringify({
       title: selectText(html, "h1"),
-      cover: selectAttr(html, "img.thumbnail", "src"),
+      cover: coverMatch ? coverMatch[1] : null,
       author: selectText(html, "a[href^='/profile/']"),
       description: selectText(html, ".description"),
       genres: selectAllText(html, ".tags a"),
