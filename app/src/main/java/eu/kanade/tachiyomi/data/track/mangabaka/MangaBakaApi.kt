@@ -53,7 +53,7 @@ class MangaBakaApi(
                 buildString {
                     append("Kizuna/v${BuildConfig.VERSION_NAME} ")
                     append("(${BuildConfig.APPLICATION_ID} ${BuildConfig.COMMIT_SHA}) ")
-                    append("(Android) (https://github.com/kizuna-app/kizuna)")
+                    append("(Android) (https://github.com/ohimeee/Kizuna)")
                 },
             )
             .build()

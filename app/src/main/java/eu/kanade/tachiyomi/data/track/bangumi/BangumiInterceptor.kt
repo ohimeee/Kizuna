@@ -35,7 +35,7 @@ class BangumiInterceptor(private val bangumi: Bangumi) : Interceptor {
         return originalRequest.newBuilder()
             .header(
                 "User-Agent",
-                "kizuna-app/Kizuna/v${BuildConfig.VERSION_NAME} (Android) (http://github.com/kizuna-app/kizuna)",
+                "ohimeee/Kizuna/v${BuildConfig.VERSION_NAME} (Android) (http://github.com/ohimeee/Kizuna)",
             )
             .apply {
                 addHeader("Authorization", "Bearer ${currAuth.accessToken}")
