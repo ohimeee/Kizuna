@@ -22,6 +22,12 @@ A plugin script must, at the top level:
      baseUrl: "https://example.com",
      version: "1.0.0",          // optional, default "1.0.0"
      supportsLatest: true,      // optional, default true
+     iconUrl: "https://example.com/favicon.ico", // optional — shown in Browse/Sources instead
+                                 // of the generic default icon; JS sources have no APK to pull
+                                 // one from like extension sources do, so supply your own (the
+                                 // site's favicon, or e.g. `https://www.google.com/s2/favicons
+                                 // ?sz=64&domain=example.com` if there's no clean direct one —
+                                 // .ico/.svg URLs generally won't render, use a PNG-serving one)
      filters: [                 // optional, default none — see "Search filters" below
        {
          id: "genre",

@@ -3,21 +3,24 @@
     "id": "royalroad",
     "name": "Royal Road",
     "lang": "en",
-    "version": "1.0.0",
-    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/royalroad.js"
+    "version": "1.2.0",
+    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/royalroad.js",
+    "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=royalroad.com"
   },
   {
     "id": "webnovel",
     "name": "Webnovel",
     "lang": "en",
-    "version": "4.1.0",
-    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/webnovel.js"
+    "version": "4.2.0",
+    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/webnovel.js",
+    "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=webnovel.com"
   },
   {
     "id": "novelfire",
     "name": "NovelFire",
     "lang": "en",
-    "version": "2.0.0",
-    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/novelfire.js"
+    "version": "2.1.0",
+    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/novelfire.js",
+    "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=novelfire.net"
   }
 ]

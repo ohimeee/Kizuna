@@ -13,4 +13,5 @@ data class NovelSourceCatalogEntry(
     val lang: String,
     val version: String,
     val fileUrl: String,
+    val iconUrl: String? = null,
 )

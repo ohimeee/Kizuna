@@ -11,6 +11,7 @@ data class Source(
     val pin: Pins = Pins.unpinned,
     val isUsedLast: Boolean = false,
     val contentType: SourceContentType = SourceContentType.IMAGE,
+    val iconUrl: String? = null,
 ) {
 
     val visualName: String

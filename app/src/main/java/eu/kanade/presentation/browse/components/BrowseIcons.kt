@@ -62,6 +62,16 @@ fun SourceIcon(
                 modifier = modifier.then(defaultModifier),
             )
         }
+        // JS novel sources have no APK to pull an icon from (the `icon` lookup above only
+        // resolves extension-installed sources), so they carry their own remote iconUrl instead.
+        source.iconUrl != null -> {
+            AsyncImage(
+                model = source.iconUrl,
+                contentDescription = null,
+                error = painterResource(R.mipmap.ic_default_source),
+                modifier = modifier.then(defaultModifier),
+            )
+        }
         source.isLocal() -> {
             Image(
                 painter = painterResource(R.mipmap.ic_local_source),

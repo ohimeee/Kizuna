@@ -1,6 +1,9 @@
 package eu.kanade.presentation.browse
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
@@ -15,7 +18,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.browse.novel.NovelSourcesViewModel
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
@@ -80,6 +86,22 @@ private fun NovelSourceCatalogItemRow(
     onClickUninstall: () -> Unit,
 ) {
     ListItem(
+        leadingContent = {
+            if (item.entry.iconUrl != null) {
+                AsyncImage(
+                    model = item.entry.iconUrl,
+                    contentDescription = null,
+                    error = painterResource(R.mipmap.ic_default_source),
+                    modifier = Modifier.height(40.dp).aspectRatio(1f),
+                )
+            } else {
+                Image(
+                    painter = painterResource(R.mipmap.ic_default_source),
+                    contentDescription = null,
+                    modifier = Modifier.height(40.dp).aspectRatio(1f),
+                )
+            }
+        },
         headlineContent = { Text(text = item.entry.name) },
         supportingContent = {
             val version = item.installedVersion?.let { "$it → ${item.entry.version}".takeIf { _ -> item.hasUpdate } }

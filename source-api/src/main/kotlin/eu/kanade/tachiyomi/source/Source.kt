@@ -34,6 +34,14 @@ interface Source {
         get() = SourceContentType.IMAGE
 
     /**
+     * Optional remote URL for the source's icon. Extension-based sources get their icon from
+     * their APK instead and leave this null; JS novel sources have no APK, so they supply one
+     * here to avoid falling back to the generic default-source icon.
+     */
+    val iconUrl: String?
+        get() = null
+
+    /**
      * Whether the source has support for latest updates.
      */
     val supportsLatest: Boolean

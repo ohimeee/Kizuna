@@ -19,8 +19,9 @@ Register(JSON.stringify({
   name: "NovelFire",
   lang: "en",
   baseUrl: "https://novelfire.net",
-  version: "2.0.0",
+  version: "2.1.0",
   supportsLatest: true,
+  iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelfire.net",
   // Slugs scraped from the real genre-listing page's nav links/URLs
   // (/genre-{genre}/sort-{sort}/status-{status}/all-novel).
   filters: [
@@ -55,7 +56,9 @@ Register(JSON.stringify({
         { label: "Mecha", value: "mecha" },
         { label: "Military", value: "military" },
         { label: "Modern Life", value: "modern-life" },
+        { label: "Movies", value: "movies" },
         { label: "Mystery", value: "mystery" },
+        { label: "Other", value: "other" },
         { label: "Psychological", value: "psychological" },
         { label: "Realistic Fiction", value: "realistic-fiction" },
         { label: "Reincarnation", value: "reincarnation" },
@@ -64,7 +67,9 @@ Register(JSON.stringify({
         { label: "Sci-fi", value: "sci-fi" },
         { label: "Seinen", value: "seinen" },
         { label: "Shoujo", value: "shoujo" },
+        { label: "Shoujo Ai", value: "shoujo-ai" },
         { label: "Shounen", value: "shounen" },
+        { label: "Shounen Ai", value: "shounen-ai" },
         { label: "Slice of Life", value: "slice-of-life" },
         { label: "Smut", value: "smut" },
         { label: "Sports", value: "sports" },
@@ -77,6 +82,8 @@ Register(JSON.stringify({
         { label: "Wuxia", value: "wuxia" },
         { label: "Xianxia", value: "xianxia" },
         { label: "Xuanhuan", value: "xuanhuan" },
+        { label: "Yaoi", value: "yaoi" },
+        { label: "Yuri", value: "yuri" },
       ],
     },
     {
@@ -84,7 +91,7 @@ Register(JSON.stringify({
       name: "Sort Results By",
       options: [
         { label: "Popular", value: "popular" },
-        { label: "New", value: "new" },
+        { label: "New Novel", value: "new" },
         { label: "Latest Release", value: "latest-release" },
       ],
     },
@@ -94,6 +101,15 @@ Register(JSON.stringify({
       options: [
         { label: "Ongoing", value: "ongoing" },
         { label: "Completed", value: "completed" },
+      ],
+    },
+    {
+      id: "country",
+      name: "Country",
+      options: [
+        { label: "Chinese", value: "chinese-novel" },
+        { label: "Japanese", value: "japanese-novel" },
+        { label: "English", value: "english-novel" },
       ],
     },
   ],
@@ -138,17 +154,18 @@ globalThis.source = {
     return parseListing(html);
   },
 
-  // The app's filter sheet (genre/sort/status above) always calls searchNovels, never
-  // popularNovels/latestNovels directly - so genre/sort/status browsing (no keyword) is handled
-  // here too, via the same genre-listing URL popularNovels uses.
+  // The app's filter sheet (genre/sort/status/country above) always calls searchNovels, never
+  // popularNovels/latestNovels directly - so genre/sort/status/country browsing (no keyword) is
+  // handled here too, via the same genre-listing URL popularNovels uses.
   searchNovels: function (query, page, filtersJson) {
     var filters = JSON.parse(filtersJson || "{}");
 
-    if (!query && (filters.genre || filters.sort || filters.status)) {
+    if (!query && (filters.genre || filters.sort || filters.status || filters.country)) {
       var genre = filters.genre || "all";
       var sort = filters.sort || "popular";
       var status = filters.status || "all";
-      var url = BASE_URL + "genre-" + genre + "/sort-" + sort + "/status-" + status + "/all-novel?page=" + page;
+      var country = filters.country || "all-novel";
+      var url = BASE_URL + "genre-" + genre + "/sort-" + sort + "/status-" + status + "/" + country + "?page=" + page;
       return parseListing(Http.get(url, "{}"));
     }
 

@@ -24,8 +24,9 @@ Register(JSON.stringify({
   name: "Royal Road",
   lang: "en",
   baseUrl: "https://www.royalroad.com",
-  version: "1.1.0",
+  version: "1.2.0",
   supportsLatest: true,
+  iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=royalroad.com",
   filters: [
     {
       id: "genre",

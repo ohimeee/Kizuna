@@ -49,9 +49,14 @@ data object BrowseTab : Tab {
     }
 
     private val switchToExtensionTabChannel = Channel<Unit>(1, BufferOverflow.DROP_OLDEST)
+    private val switchToNovelSourcesTabChannel = Channel<Unit>(1, BufferOverflow.DROP_OLDEST)
 
     fun showExtension() {
         switchToExtensionTabChannel.trySend(Unit)
+    }
+
+    fun showNovelSources() {
+        switchToNovelSourcesTabChannel.trySend(Unit)
     }
 
     @Composable
@@ -81,6 +86,10 @@ data object BrowseTab : Tab {
         LaunchedEffect(Unit) {
             switchToExtensionTabChannel.receiveAsFlow()
                 .collectLatest { state.scrollToPage(1) }
+        }
+        LaunchedEffect(Unit) {
+            switchToNovelSourcesTabChannel.receiveAsFlow()
+                .collectLatest { state.scrollToPage(2) }
         }
 
         LaunchedEffect(Unit) {

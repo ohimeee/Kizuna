@@ -94,5 +94,6 @@ class SourceRepositoryImpl(
         supportsLatest = false,
         isStub = false,
         contentType = source.contentType,
+        iconUrl = source.iconUrl,
     )
 }

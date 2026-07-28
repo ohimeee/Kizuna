@@ -90,6 +90,7 @@ fun ExtensionScreen(
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
     onContentTypeFilterChange: (SourceContentType?) -> Unit = {},
+    onGoToNovelSources: () -> Unit = {},
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -105,6 +106,24 @@ fun ExtensionScreen(
             )
             when {
                 state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
+                state.isEmpty && state.contentTypeFilter == SourceContentType.NOVEL && searchQuery.isNullOrEmpty() -> {
+                    // JS novel sources never appear here - this filter only scans APK-based
+                    // extensions (ExtensionManager), a completely separate system from the
+                    // NovelSourceLoader-backed Novels tab. Without this, an installed NovelFire/
+                    // Webnovel source still shows a blank "no results" here, indistinguishable
+                    // from an actual bug.
+                    EmptyScreen(
+                        stringRes = MR.strings.novel_sources_live_in_novels_tab,
+                        modifier = Modifier.padding(contentPadding),
+                        actions = listOf(
+                            EmptyScreenAction(
+                                stringRes = MR.strings.label_novels,
+                                icon = Icons.Outlined.MenuBook,
+                                onClick = onGoToNovelSources,
+                            ),
+                        ),
+                    )
+                }
                 state.isEmpty -> {
                     val msg = if (!searchQuery.isNullOrEmpty()) {
                         MR.strings.no_results_found

@@ -30,11 +30,13 @@ import java.security.MessageDigest
  *
  * The plugin script must, at top level:
  * 1. Call `Register(json)` exactly once with its own metadata: `id`, `name`, `lang`, `baseUrl`,
- *    and optionally `version`/`supportsLatest`/`filters`. `filters` (optional, defaults to none)
- *    is a list of single-select genre-style filters shown in the search filter sheet:
+ *    and optionally `version`/`supportsLatest`/`filters`/`iconUrl`. `filters` (optional, defaults
+ *    to none) is a list of single-select genre-style filters shown in the search filter sheet:
  *    `[{ id, name, options: [{ label, value }] }]` — `id` is an internal key only `searchNovels`
  *    sees, `name`/`label` are what the user sees. Not every site has a usable one; it's fine to
- *    omit entirely.
+ *    omit entirely. `iconUrl` (optional) is a remote image URL shown in Browse/Sources instead of
+ *    the generic default-source icon — there's no APK to pull an icon from like extension sources
+ *    get, so plugins that want a real icon must supply one themselves (e.g. the site's favicon).
  * 2. Assign `globalThis.source` to an object implementing:
  *    - `popularNovels(page)` -> JSON `{ novels: [{ title, url, cover? }], hasNextPage }`
  *    - `latestNovels(page)` -> same shape as `popularNovels`
@@ -73,6 +75,7 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
     override val name: String get() = metadata.name
     override val lang: String get() = metadata.lang
     override val supportsLatest: Boolean get() = metadata.supportsLatest
+    override val iconUrl: String? get() = metadata.iconUrl
 
     val baseUrl: String get() = metadata.baseUrl
     val version: String get() = metadata.version
@@ -237,6 +240,7 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
                             version = dto.version,
                             supportsLatest = dto.supportsLatest,
                             filters = dto.filters,
+                            iconUrl = dto.iconUrl,
                         )
                     }
                 },
@@ -345,6 +349,7 @@ private data class PluginMetadata(
     val version: String,
     val supportsLatest: Boolean,
     val filters: List<FilterDefDto> = emptyList(),
+    val iconUrl: String? = null,
 )
 
 @Serializable
@@ -356,6 +361,7 @@ private data class PluginMetadataDto(
     val version: String = "1.0.0",
     val supportsLatest: Boolean = true,
     val filters: List<FilterDefDto> = emptyList(),
+    val iconUrl: String? = null,
 )
 
 @Serializable

@@ -47,8 +47,9 @@ Register(JSON.stringify({
   name: "Webnovel",
   lang: "en",
   baseUrl: "https://m.webnovel.com",
-  version: "4.1.0",
+  version: "4.2.0",
   supportsLatest: true,
+  iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=webnovel.com",
   // Genre slugs/labels and sort codes taken from LNReader's real, working Webnovel plugin. Genre:
   // the "male" bucket (www.webnovel.com splits genres by a gender axis LNReader exposes as two
   // separate filters; collapsed into one list here since Kizuna's filter contract is single-select
