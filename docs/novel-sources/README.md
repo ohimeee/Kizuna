@@ -48,7 +48,7 @@ A plugin script must, at the top level:
    | `latestNovels(page)` | same shape as `popularNovels` |
    | `searchNovels(query, page, filtersJson)` | same shape as `popularNovels` |
    | `novelDetails(url)` | JSON `{ title?, cover?, author?, description?, genres?, status? }` |
-   | `chapterList(novelUrl)` | JSON array of `{ name, url, chapterNumber?, dateUpload? }` |
+   | `chapterList(novelUrl)` | JSON array of `{ name, url, chapterNumber?, dateUpload? }`, chapter 1 first |
    | `chapterContent(chapterUrl)` | plain string (not JSON) — the chapter body |
 
 ### Search filters

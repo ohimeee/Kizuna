@@ -174,6 +174,22 @@ class DownloadManager(
     }
 
     /**
+     * Returns the saved text of a downloaded [eu.kanade.tachiyomi.source.NovelSource] chapter, or
+     * null if it hasn't been downloaded - lets the novel reader read offline without touching the
+     * network at all when a chapter is already on disk.
+     *
+     * @param source the source of the chapter.
+     * @param manga the manga of the chapter.
+     * @param chapter the chapter to read.
+     */
+    fun getChapterTextIfDownloaded(source: Source, manga: Manga, chapter: Chapter): String? {
+        val chapterDir = provider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, manga.title, source)
+            ?: return null
+        val file = chapterDir.findFile(Downloader.NOVEL_CHAPTER_FILE_NAME) ?: return null
+        return file.openInputStream().use { it.readBytes().decodeToString() }
+    }
+
+    /**
      * Returns true if the chapter is downloaded.
      *
      * @param chapterName the name of the chapter to query.

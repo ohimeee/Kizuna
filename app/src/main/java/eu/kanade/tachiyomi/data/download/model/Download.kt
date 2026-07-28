@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.data.download.model
 
+import eu.kanade.tachiyomi.source.NovelSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.delay
@@ -20,7 +22,7 @@ import uy.kohesive.injekt.api.get
 import kotlin.time.Duration.Companion.milliseconds
 
 data class Download(
-    val source: HttpSource,
+    val source: Source,
     val manga: Manga,
     val chapter: Chapter,
 ) {
@@ -81,9 +83,14 @@ data class Download(
         ): Download? {
             val chapter = getChapter.await(chapterId) ?: return null
             val manga = getManga.await(chapter.mangaId) ?: return null
-            val source = sourceManager.get(manga.source) as? HttpSource ?: return null
+            val source = sourceManager.get(manga.source)?.takeIfDownloadable() ?: return null
 
             return Download(source, manga, chapter)
         }
     }
 }
+
+/** [HttpSource] downloads its pages as images; [NovelSource] downloads its chapter text as a
+ * single file (see [eu.kanade.tachiyomi.data.download.Downloader]) - every other [Source]
+ * implementation (e.g. the local source) has no remote content to download at all. */
+internal fun Source.takeIfDownloadable(): Source? = takeIf { this is HttpSource || this is NovelSource }

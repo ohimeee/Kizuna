@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eu.kanade.domain.chapter.model.toSChapter
+import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.NovelSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val updateChapter: UpdateChapter = Injekt.get(),
     private val upsertHistory: UpsertHistory = Injekt.get(),
+    private val downloadManager: DownloadManager = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -81,9 +83,34 @@ class NovelReaderViewModel @JvmOverloads constructor(
         chapterReadStartTime = System.currentTimeMillis()
 
         try {
-            val text = source.getChapterText(chapter.toSChapter())
-            val paragraphs = splitParagraphs(text)
+            val manga = manga ?: error("Manga not loaded")
+            val text = downloadManager.getChapterTextIfDownloaded(source, manga, chapter)
+                ?: source.getChapterText(chapter.toSChapter())
             val index = chapterList.indexOfFirst { it.id == chapter.id }
+
+            val paragraphs = splitParagraphs(text)
+
+            if (paragraphs.all { it.isBlank() }) {
+                // Not every "no content" case is a fetch failure - some sites (Webnovel in
+                // particular) paywall chapters past the first few free ones per novel, and the
+                // source plugin deliberately doesn't try to bypass that. The raw response can
+                // still contain non-blank markup (e.g. an empty "<p></p>") even though nothing
+                // readable comes out the other end of paragraph-splitting, so this is checked
+                // after splitting, not on the raw text. Wire up prev/next regardless so a locked
+                // chapter doesn't strand the reader with no way past it.
+                mutableState.update {
+                    it.copy(
+                        isLoading = false,
+                        chapter = chapter,
+                        error = "No content available - this chapter may be locked on the source site",
+                        hasPrevChapter = index > 0,
+                        hasNextChapter = index in 0 until chapterList.lastIndex,
+                        prevChapterName = chapterList.getOrNull(index - 1)?.name,
+                        nextChapterName = chapterList.getOrNull(index + 1)?.name,
+                    )
+                }
+                return
+            }
 
             mutableState.update {
                 it.copy(
@@ -94,6 +121,8 @@ class NovelReaderViewModel @JvmOverloads constructor(
                         .coerceIn(0, (paragraphs.size - 1).coerceAtLeast(0)),
                     hasPrevChapter = index > 0,
                     hasNextChapter = index in 0 until chapterList.lastIndex,
+                    prevChapterName = chapterList.getOrNull(index - 1)?.name,
+                    nextChapterName = chapterList.getOrNull(index + 1)?.name,
                 )
             }
         } catch (e: Exception) {
@@ -150,12 +179,18 @@ class NovelReaderViewModel @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Splits chapter HTML into paragraphs, keeping *inline* tags (`<b>`, `<i>`, etc.) intact so
+     * [eu.kanade.presentation.reader.parseInlineHtml] can render them as real bold/italic spans
+     * instead of losing formatting - only block-level `<p>` wrappers and paragraph boundaries are
+     * stripped here.
+     */
     private fun splitParagraphs(text: String): List<String> {
-        val stripTags = Regex("<[^>]+>")
-        val split = text.split(Regex("(?i)</p>|<br\\s*/?>|\n{2,}"))
-            .map { it.replace(stripTags, "").trim() }
+        val stripBlockTags = Regex("(?i)</?p[^>]*>")
+        val split = text.split(Regex("(?i)</p>|<br\\s*/?>\\s*<br\\s*/?>|\n{2,}"))
+            .map { it.replace(stripBlockTags, "").trim() }
             .filter { it.isNotEmpty() }
-        return split.ifEmpty { listOf(text.replace(stripTags, "").trim()) }
+        return split.ifEmpty { listOf(text.replace(stripBlockTags, "").trim()) }
     }
 
     @Immutable
@@ -166,6 +201,8 @@ class NovelReaderViewModel @JvmOverloads constructor(
         val initialParagraphIndex: Int = 0,
         val hasPrevChapter: Boolean = false,
         val hasNextChapter: Boolean = false,
+        val prevChapterName: String? = null,
+        val nextChapterName: String? = null,
         val error: String? = null,
     )
 }

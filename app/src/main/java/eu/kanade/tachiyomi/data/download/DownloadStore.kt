@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.data.download
 import android.content.Context
 import androidx.core.content.edit
 import eu.kanade.tachiyomi.data.download.model.Download
-import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.data.download.model.takeIfDownloadable
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -102,7 +102,7 @@ class DownloadStore(
                 val manga = cachedManga.getOrPut(mangaId) {
                     runBlocking { getManga.await(mangaId) }
                 } ?: continue
-                val source = sourceManager.get(manga.source) as? HttpSource ?: continue
+                val source = sourceManager.get(manga.source)?.takeIfDownloadable() ?: continue
                 val chapter = runBlocking { getChapter.await(chapterId) } ?: continue
                 downloads.add(Download(source, manga, chapter))
             }

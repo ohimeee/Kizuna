@@ -8,7 +8,9 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
+import eu.kanade.tachiyomi.data.download.model.takeIfDownloadable
 import eu.kanade.tachiyomi.network.HttpException
+import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -274,7 +276,7 @@ class Downloader(
     fun queueChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean) {
         if (chapters.isEmpty()) return
 
-        val source = sourceManager.get(manga.source) as? HttpSource ?: return
+        val source = sourceManager.get(manga.source)?.takeIfDownloadable() ?: return
         val wasEmpty = queueState.value.isEmpty()
         val chaptersToQueue = chapters.asSequence()
             // Filter out those already downloaded.
@@ -348,77 +350,122 @@ class Downloader(
         val tmpDir = mangaDir.createDirectory(chapterDirname + TMP_DIR_SUFFIX)!!
 
         try {
-            // If the page list already exists, start from the file
-            val pageList = download.pages ?: run {
-                // Otherwise, pull page list from network and add them to download object
-                val pages = download.source.getPageList(download.chapter.toSChapter())
-
-                if (pages.isEmpty()) {
-                    throw Exception(context.stringResource(MR.strings.page_list_empty_error))
-                }
-                // Don't trust index from source
-                val reIndexedPages = pages.mapIndexed { index, page -> Page(index, page.url, page.imageUrl, page.uri) }
-                download.pages = reIndexedPages
-                reIndexedPages
-            }
-
-            download.status = Download.State.DOWNLOADING
-
-            // Start downloading images, consider we can have downloaded images already
-            pageList.asFlow().flatMapMerge(concurrency = downloadPreferences.parallelPageLimit.get()) { page ->
-                flow {
-                    // Fetch image URL if necessary
-                    if (page.imageUrl.isNullOrEmpty()) {
-                        page.status = Page.State.LoadPage
-                        try {
-                            page.imageUrl = download.source.getImageUrl(page)
-                        } catch (e: Throwable) {
-                            page.status = Page.State.Error(e)
-                        }
-                    }
-
-                    withIOContext { getOrDownloadImage(page, download, tmpDir) }
-                    emit(page)
-                }
-                    .flowOn(Dispatchers.IO)
-            }
-                .collect {
-                    // Do when page is downloaded.
-                    notifier.onProgressChange(download)
-                }
-
-            // Do after download completes
-
-            if (!isDownloadSuccessful(download, tmpDir)) {
-                download.status = Download.State.ERROR
-                return
-            }
-
-            createComicInfoFile(
-                tmpDir,
-                download.manga,
-                download.chapter,
-                download.source,
-            )
-
-            // Only rename the directory if it's downloaded
-            if (downloadPreferences.saveChaptersAsCBZ.get()) {
-                archiveChapter(mangaDir, chapterDirname, tmpDir)
+            if (download.source is NovelSource) {
+                downloadNovelChapterText(download, tmpDir, mangaDir, chapterDirname)
             } else {
-                tmpDir.renameTo(chapterDirname)
+                downloadChapterPages(download, tmpDir, mangaDir, chapterDirname)
             }
-            cache.addChapter(chapterDirname, mangaDir, download.manga)
-
-            DiskUtil.createNoMediaFile(tmpDir, context)
-
-            download.status = Download.State.DOWNLOADED
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
-            // If the page list threw, it will resume here
+            // If the page list (or chapter text) fetch threw, it will resume here
             logcat(LogPriority.ERROR, error)
             download.status = Download.State.ERROR
             notifier.onError(error.message, download.chapter.name, download.manga.title, download.manga.id)
         }
+    }
+
+    /** The original image-page download pipeline, for [HttpSource] (and any other non-[NovelSource]). */
+    private suspend fun downloadChapterPages(download: Download, tmpDir: UniFile, mangaDir: UniFile, chapterDirname: String) {
+        val source = download.source as HttpSource
+
+        // If the page list already exists, start from the file
+        val pageList = download.pages ?: run {
+            // Otherwise, pull page list from network and add them to download object
+            val pages = source.getPageList(download.chapter.toSChapter())
+
+            if (pages.isEmpty()) {
+                throw Exception(context.stringResource(MR.strings.page_list_empty_error))
+            }
+            // Don't trust index from source
+            val reIndexedPages = pages.mapIndexed { index, page -> Page(index, page.url, page.imageUrl, page.uri) }
+            download.pages = reIndexedPages
+            reIndexedPages
+        }
+
+        download.status = Download.State.DOWNLOADING
+
+        // Start downloading images, consider we can have downloaded images already
+        pageList.asFlow().flatMapMerge(concurrency = downloadPreferences.parallelPageLimit.get()) { page ->
+            flow {
+                // Fetch image URL if necessary
+                if (page.imageUrl.isNullOrEmpty()) {
+                    page.status = Page.State.LoadPage
+                    try {
+                        page.imageUrl = source.getImageUrl(page)
+                    } catch (e: Throwable) {
+                        page.status = Page.State.Error(e)
+                    }
+                }
+
+                withIOContext { getOrDownloadImage(page, download, tmpDir) }
+                emit(page)
+            }
+                .flowOn(Dispatchers.IO)
+        }
+            .collect {
+                // Do when page is downloaded.
+                notifier.onProgressChange(download)
+            }
+
+        // Do after download completes
+
+        if (!isDownloadSuccessful(download, tmpDir)) {
+            download.status = Download.State.ERROR
+            return
+        }
+
+        createComicInfoFile(
+            tmpDir,
+            download.manga,
+            download.chapter,
+            source,
+        )
+
+        // Only rename the directory if it's downloaded
+        if (downloadPreferences.saveChaptersAsCBZ.get()) {
+            archiveChapter(mangaDir, chapterDirname, tmpDir)
+        } else {
+            tmpDir.renameTo(chapterDirname)
+        }
+        cache.addChapter(chapterDirname, mangaDir, download.manga)
+
+        DiskUtil.createNoMediaFile(tmpDir, context)
+
+        download.status = Download.State.DOWNLOADED
+    }
+
+    /**
+     * Text-based download for [NovelSource] chapters. A chapter here is its whole body text, not
+     * a list of images - there's no page list, no per-image concurrency, no CBZ archiving or
+     * ComicInfo.xml (nothing image-reader-specific reads a novel chapter's folder). It's modeled
+     * as a single [Page] purely so the existing progress/notifier/queue UI works unmodified.
+     */
+    private suspend fun downloadNovelChapterText(download: Download, tmpDir: UniFile, mangaDir: UniFile, chapterDirname: String) {
+        val source = download.source as NovelSource
+        val page = download.pages?.firstOrNull() ?: Page(0, download.chapter.url).also { download.pages = listOf(it) }
+
+        download.status = Download.State.DOWNLOADING
+        page.status = Page.State.DownloadImage
+
+        val text = source.getChapterText(download.chapter.toSChapter())
+        if (text.isBlank()) {
+            throw Exception(context.stringResource(MR.strings.page_list_empty_error))
+        }
+
+        tmpDir.createFile(NOVEL_CHAPTER_FILE_NAME)!!.openOutputStream().use {
+            it.write(text.toByteArray())
+        }
+
+        page.status = Page.State.Ready
+        page.progress = 100
+        notifier.onProgressChange(download)
+
+        tmpDir.renameTo(chapterDirname)
+        cache.addChapter(chapterDirname, mangaDir, download.manga)
+
+        DiskUtil.createNoMediaFile(tmpDir, context)
+
+        download.status = Download.State.DOWNLOADED
     }
 
     /**
@@ -449,7 +496,7 @@ class Downloader(
                 chapterCache.isImageInCache(
                     page.imageUrl!!,
                 ) -> copyImageFromCache(chapterCache.getImageFile(page.imageUrl!!), tmpDir, filename)
-                else -> downloadImage(page, download.source, tmpDir, filename)
+                else -> downloadImage(page, download.source as HttpSource, tmpDir, filename)
             }
 
             // When the page is ready, set page path, progress (just in case) and status
@@ -740,6 +787,9 @@ class Downloader(
 
     companion object {
         const val TMP_DIR_SUFFIX = "_tmp"
+        /** Name of the file a downloaded [NovelSource] chapter's text is saved as, inside its
+         * (otherwise image-folder-shaped) chapter directory. */
+        const val NOVEL_CHAPTER_FILE_NAME = "chapter.txt"
         const val WARNING_NOTIF_TIMEOUT_MS = 30_000L
         const val CHAPTERS_PER_SOURCE_QUEUE_WARNING_THRESHOLD = 15
         private const val DOWNLOADS_QUEUED_WARNING_THRESHOLD = 30

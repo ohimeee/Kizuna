@@ -45,7 +45,9 @@ import java.security.MessageDigest
  *      a non-default option for (a filter left on its default/"Any" option is omitted entirely, so
  *      `filtersJson` is `"{}"` for a plain search with no filters touched).
  *    - `novelDetails(url)` -> JSON `{ title?, cover?, author?, description?, genres?, status? }`
- *    - `chapterList(novelUrl)` -> JSON array of `{ name, url, chapterNumber?, dateUpload? }`
+ *    - `chapterList(novelUrl)` -> JSON array of `{ name, url, chapterNumber?, dateUpload? }`, in
+ *      natural reading order (chapter 1 first) - this gets reversed internally to match Mihon's
+ *      own newest-first sourceOrder convention, so plugins never need to worry about it
  *    - `chapterContent(chapterUrl)` -> plain string (not JSON), the chapter body
  *
  * Two globals are available to the script for scraping: `Http.get(url, headersJson)` /
@@ -137,7 +139,16 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
             }
 
             val updatedChapters = if (fetchChapters) {
-                Json.decodeFromString<List<ChapterListItemDto>>(api.chapterList(manga.url)).map { dto ->
+                // Plugins return chapterList() in natural reading order (chapter 1 first - see the
+                // class doc below and docs/novel-sources/README.md). Mihon's chapter-sort machinery
+                // (tachiyomi.domain.chapter.service.ChapterSort, CHAPTER_SORTING_SOURCE branch)
+                // assumes the opposite - the manga-extension convention of newest-first - and
+                // assigns sourceOrder by raw list index accordingly (SyncChaptersWithSource). Left
+                // as-is, a fresh novel entry (which defaults to source-order sorting) shows chapters
+                // reversed everywhere that relies on sourceOrder, including reader prev/next
+                // navigation. Reverse here, once, centrally, so every plugin can be written in the
+                // natural order and this quirk doesn't need to be rediscovered per plugin.
+                Json.decodeFromString<List<ChapterListItemDto>>(api.chapterList(manga.url)).asReversed().map { dto ->
                     SChapter.create().apply {
                         name = dto.name
                         url = dto.url

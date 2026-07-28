@@ -133,9 +133,9 @@ class DomainModule : InjektModule {
         addFactory { ResetViewerFlags(get()) }
         addFactory { SetMangaChapterFlags(get()) }
         addFactory { FetchInterval(get()) }
-        addFactory { SetMangaDefaultChapterFlags(get(), get(), get()) }
+        addFactory { SetMangaDefaultChapterFlags(get(), get(), get(), get()) }
         addFactory { SetMangaViewerFlags(get()) }
-        addFactory { NetworkToLocalManga(get()) }
+        addFactory { NetworkToLocalManga(get(), get()) }
         addFactory { UpdateManga(get(), get()) }
         addFactory { UpdateMangaNotes(get()) }
         addFactory { SetMangaCategories(get()) }
