@@ -62,6 +62,12 @@ fork of [Tachiyomi](https://github.com/tachiyomiorg/tachiyomi)) and incorporates
 from [LNReader](https://github.com/LNReader/lnreader). Thank you to all contributors of both
 upstream projects.
 
+Thank you to all the people who have contributed to Kizuna itself!
+
+<a href="https://github.com/ohimeee/Kizuna/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=ohimeee/Kizuna" alt="Kizuna contributors" title="Kizuna contributors" width="800"/>
+</a>
+
 ### Disclaimer
 
 The developer(s) of this application does not have any affiliation with the content providers available, and this application hosts zero content.
