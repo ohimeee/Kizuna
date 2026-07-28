@@ -13,6 +13,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
@@ -38,7 +39,10 @@ import java.security.MessageDigest
  *    - `chapterContent(chapterUrl)` -> plain string (not JSON), the chapter body
  *
  * Two globals are available to the script for scraping: `Http.get(url, headersJson)` /
- * `Http.post(url, body, headersJson)` (both return the response body as a string), and
+ * `Http.post(url, body, headersJson)` (both return the response body as a string) /
+ * `Http.getCookie(url, name)` (reads a cookie previously set on this device's cookie jar for that
+ * URL's host — e.g. a CSRF token cookie set by an earlier `Http.get` response, needed by sites
+ * whose JSON APIs require the token echoed back as a query param), and
  * `Html.selectText/selectOwnText/selectAttr/selectHtml(html, selector[, attr])` plus
  * `selectAllText/selectAllAttr` (which return a JSON array), all backed by Jsoup. A `fetchApi`
  * convenience wrapper around `Http` is also predefined — see [PRELUDE_SCRIPT].
@@ -168,6 +172,8 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
                     override fun get(url: String, headersJson: String): String = httpGet(url, headersJson)
                     override fun post(url: String, body: String, headersJson: String): String =
                         httpPost(url, body, headersJson)
+                    override fun getCookie(url: String, name: String): String =
+                        network.cookieJar.get(url.toHttpUrl()).firstOrNull { it.name == name }?.value.orEmpty()
                 },
             )
             engine.set(
@@ -352,6 +358,7 @@ private data class ChapterListItemDto(
 private interface HttpBridge {
     fun get(url: String, headersJson: String): String
     fun post(url: String, body: String, headersJson: String): String
+    fun getCookie(url: String, name: String): String
 }
 
 /** Exposed into JS as `Html`. Backed by Jsoup; `html` is the raw document/fragment string to query. */

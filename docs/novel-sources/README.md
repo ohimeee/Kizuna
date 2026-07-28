@@ -41,6 +41,9 @@ A plugin script must, at the top level:
 
 - `fetchApi(url, options)` — synchronous (no Promise); returns `{ text(), json() }`.
   `options.method` (default `GET`), `options.headers`, `options.body`.
+- `Http.getCookie(url, name)` — reads a cookie previously set on the device's cookie jar for
+  that URL's host (e.g. a CSRF token set by an earlier `Http.get`/`fetchApi` call). Needed by
+  sites whose JSON APIs require a cookie value echoed back as a query param.
 - `selectText(html, selector)` / `selectOwnText(html, selector)` — first match's (own) text.
 - `selectAttr(html, selector, attr)` — first match's attribute value.
 - `selectHtml(html, selector)` — first match's outer HTML.
