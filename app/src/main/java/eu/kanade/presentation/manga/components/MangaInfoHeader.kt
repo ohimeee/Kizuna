@@ -37,6 +37,8 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Schedule
@@ -88,6 +90,7 @@ import com.mikepenz.markdown.model.markdownAnnotatorConfig
 import com.mikepenz.markdown.utils.getUnescapedTextInNode
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.DropdownMenu
+import eu.kanade.presentation.library.components.rememberIsNovelSource
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.system.copyToClipboard
@@ -372,6 +375,7 @@ private fun MangaAndSourceTitlesLarge(
             status = manga.status,
             sourceName = sourceName,
             isStubSource = isStubSource,
+            isNovel = rememberIsNovelSource(manga.source),
             doSearch = doSearch,
             textAlign = TextAlign.Center,
         )
@@ -415,6 +419,7 @@ private fun MangaAndSourceTitlesSmall(
                 status = manga.status,
                 sourceName = sourceName,
                 isStubSource = isStubSource,
+                isNovel = rememberIsNovelSource(manga.source),
                 doSearch = doSearch,
             )
         }
@@ -429,26 +434,39 @@ private fun ColumnScope.MangaContentInfo(
     status: Long,
     sourceName: String,
     isStubSource: Boolean,
+    isNovel: Boolean,
     doSearch: (query: String, global: Boolean) -> Unit,
     textAlign: TextAlign? = LocalTextStyle.current.textAlign,
 ) {
     val context = LocalContext.current
-    Text(
-        text = title.ifBlank { stringResource(MR.strings.unknown_title) },
-        style = MaterialTheme.typography.titleLarge,
-        modifier = Modifier.clickableNoIndication(
-            onLongClick = {
-                if (title.isNotBlank()) {
-                    context.copyToClipboard(
-                        title,
-                        title,
-                    )
-                }
-            },
-            onClick = { if (title.isNotBlank()) doSearch(title, true) },
-        ),
-        textAlign = textAlign,
-    )
+    Row(
+        modifier = Modifier
+            .align(if (textAlign == TextAlign.Center) Alignment.CenterHorizontally else Alignment.Start),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (isNovel) Icons.Outlined.MenuBook else Icons.Outlined.Image,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = title.ifBlank { stringResource(MR.strings.unknown_title) },
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.clickableNoIndication(
+                onLongClick = {
+                    if (title.isNotBlank()) {
+                        context.copyToClipboard(
+                            title,
+                            title,
+                        )
+                    }
+                },
+                onClick = { if (title.isNotBlank()) doSearch(title, true) },
+            ),
+            textAlign = textAlign,
+        )
+    }
 
     Spacer(modifier = Modifier.height(2.dp))
 

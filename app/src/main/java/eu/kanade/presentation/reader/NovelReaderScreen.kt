@@ -73,6 +73,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -189,9 +190,15 @@ fun NovelReaderScreen(
     var showControls by remember { mutableStateOf(false) }
     LaunchedEffect(showControls) { onControlsVisibilityChanged(showControls) }
 
-    val listState: LazyListState = rememberLazyListState(
-        initialFirstVisibleItemIndex = state.initialParagraphIndex,
-    )
+    // Keyed on the chapter id so a fresh LazyListState is created on every chapter change -
+    // without this, rememberLazyListState only reads initialFirstVisibleItemIndex the very first
+    // time it's constructed, then keeps reusing that same state object (and its current scroll
+    // position) across every later chapter load, since state.chapter changing alone doesn't
+    // recreate it. That's what made a freshly-opened next chapter appear to inherit the previous
+    // chapter's scroll position instead of starting at its own initialParagraphIndex.
+    val listState: LazyListState = key(state.chapter?.id) {
+        rememberLazyListState(initialFirstVisibleItemIndex = state.initialParagraphIndex)
+    }
     val scope = rememberCoroutineScope()
     val chromeBackground = chromeBackgroundColor()
 
@@ -481,6 +488,7 @@ private fun NovelReaderContent(
     val bionicReading by preferences.bionicReading.collectAsState()
     val autoScroll by preferences.autoScroll.collectAsState()
     val autoScrollSpeed by preferences.autoScrollSpeed.collectAsState()
+    val showBatteryAndTime by preferences.showBatteryAndTime.collectAsState()
 
     val textAlign = when (textAlignPref) {
         NovelTextAlign.LEFT -> TextAlign.Left
@@ -577,8 +585,14 @@ private fun NovelReaderContent(
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                horizontal = contentPadding.dp,
-                vertical = MaterialTheme.padding.medium,
+                start = contentPadding.dp,
+                end = contentPadding.dp,
+                top = MaterialTheme.padding.medium,
+                // The footer (progress/battery/time) is always-visible overlay, not part of the
+                // scrollable content, so without extra bottom padding the last item (the
+                // Finished/Next-chapter pill) ends up rendered right underneath it instead of
+                // stopping above it once scrolled all the way down.
+                bottom = if (showBatteryAndTime) 64.dp else MaterialTheme.padding.medium,
             ),
             modifier = Modifier
                 .fillMaxSize()

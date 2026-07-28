@@ -10,6 +10,7 @@ import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.NovelSource
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,10 +62,37 @@ class NovelReaderViewModel @JvmOverloads constructor(
     private var initialized = false
     private val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
 
+    // NovelReaderActivity is launchMode="singleTask", so re-tapping a different chapter (e.g.
+    // spamming entries in History) while a reader is already open reuses the SAME Activity/
+    // ViewModel instance via onNewIntent rather than creating a new one. Guards against two loads
+    // racing each other and clobbering shared state (manga/source/chapterList) with a stale
+    // result landing after a newer one.
+    private var loadJob: Job? = null
+
     fun needsInit() = !initialized
 
     suspend fun init(mangaId: Long, chapterId: Long): Result<Boolean> {
         if (initialized) return Result.success(true)
+        val result = loadManga(mangaId, chapterId)
+        if (result.isSuccess) initialized = true
+        return result
+    }
+
+    /**
+     * Called from [NovelReaderActivity.onNewIntent] when a `singleTask` re-entry brings an
+     * already-open reader back to front for a *different* chapter/manga (e.g. tapping another
+     * History entry while a reader is already open) - unlike [init], this always (re)loads
+     * regardless of [initialized], since the existing state is for the wrong chapter entirely.
+     */
+    fun openNewTarget(mangaId: Long, chapterId: Long) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            saveHistory()
+            loadManga(mangaId, chapterId)
+        }
+    }
+
+    private suspend fun loadManga(mangaId: Long, chapterId: Long): Result<Boolean> {
         return try {
             val manga = getManga.await(mangaId) ?: error("Manga not found")
             this.manga = manga
@@ -79,10 +107,12 @@ class NovelReaderViewModel @JvmOverloads constructor(
             val chapter = chapterList.find { it.id == chapterId } ?: error("Chapter not found")
 
             openChapter(source, chapter)
-            initialized = true
             Result.success(true)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
+            mutableState.update {
+                it.copy(isLoading = false, error = e.message ?: "Failed to load chapter")
+            }
             Result.failure(e)
         }
     }
@@ -203,7 +233,8 @@ class NovelReaderViewModel @JvmOverloads constructor(
         val target = chapterList.getOrNull(index + offset) ?: return
         val source = manga?.let { sourceManager.get(it.source) as? NovelSource } ?: return
 
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             saveHistory()
             openChapter(source, target)
         }

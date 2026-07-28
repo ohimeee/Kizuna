@@ -49,6 +49,7 @@ internal fun LibraryCompactGrid(
                     UnreadBadge(count = libraryItem.badges.unreadCount)
                 },
                 coverBadgeEnd = {
+                    ContentTypeBadge(isNovel = rememberIsNovelSource(manga.source))
                     LanguageBadge(
                         isLocal = libraryItem.badges.isLocal,
                         sourceLanguage = libraryItem.badges.sourceLanguage,

@@ -105,6 +105,26 @@ class NovelReaderActivity : BaseActivity() {
         }
     }
 
+    /**
+     * This Activity is launchMode="singleTask", so tapping a *different* chapter (e.g. spamming
+     * entries in History) while a reader is already open reuses this same instance instead of
+     * creating a new one - delivered here, not to [onCreate]. Without this override the new
+     * chapter/manga extras were silently discarded and the reader just kept whatever state the
+     * first-ever load left behind (including a leftover "no content" error from an unrelated
+     * chapter, since the state was never for the newly-tapped one to begin with).
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+
+        val mangaId = intent.extras?.getLong("manga", -1) ?: -1L
+        val chapterId = intent.extras?.getLong("chapter", -1) ?: -1L
+        if (mangaId == -1L || chapterId == -1L) return
+
+        NotificationReceiver.dismissNotification(this, mangaId.hashCode(), Notifications.ID_NEW_CHAPTERS)
+        viewModel.openNewTarget(mangaId, chapterId)
+    }
+
     override fun onPause() {
         super.onPause()
         viewModel.saveHistory()
