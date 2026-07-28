@@ -11,11 +11,12 @@ Discover and read manga, webtoons, comics, and light novels — in one unified l
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-0877d2.svg)](/LICENSE)
 
-*Requires Android 8.0 or higher.*
-
 ## Download
 
-Grab the latest APK from the [Releases page](https://github.com/ohimeee/Kizuna/releases/latest).
+[![Kizuna Stable](https://img.shields.io/github/release/ohimeee/Kizuna.svg?maxAge=3600&label=Stable&labelColor=06599d&color=043b69)](https://github.com/ohimeee/Kizuna/releases/latest)
+
+*Requires Android 8.0 or higher.*
+
 Kizuna is distributed as a direct APK download only (not on the Google Play Store).
 
 ## About
