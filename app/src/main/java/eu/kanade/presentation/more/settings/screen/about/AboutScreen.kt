@@ -161,7 +161,9 @@ object AboutScreen : Screen() {
                 item {
                     TextPreferenceWidget(
                         title = stringResource(MR.strings.privacy_policy),
-                        onPreferenceClick = { uriHandler.openUri("https://mihon.app/privacy/") },
+                        onPreferenceClick = {
+                            uriHandler.openUri("https://github.com/ohimeee/Kizuna/blob/main/PRIVACY.md")
+                        },
                     )
                 }
 
