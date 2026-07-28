@@ -1,5 +1,6 @@
 package eu.kanade.domain.source.interactor
 
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.source.service.SourcePreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -9,10 +10,13 @@ import tachiyomi.domain.source.model.Pins
 import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.source.local.isLocal
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class GetEnabledSources(
     private val repository: SourceRepository,
     private val preferences: SourcePreferences,
+    private val basePreferences: BasePreferences = Injekt.get(),
 ) {
 
     fun subscribe(): Flow<List<Source>> {
@@ -20,12 +24,13 @@ class GetEnabledSources(
             preferences.pinnedSources.changes(),
             preferences.enabledLanguages.changes(),
             preferences.disabledSources.changes(),
-            preferences.lastUsedSource.changes(),
+            combine(preferences.lastUsedSource.changes(), basePreferences.contentMode.changes(), ::Pair),
             repository.getSources(),
-        ) { pinnedSourceIds, enabledLanguages, disabledSources, lastUsedSource, sources ->
+        ) { pinnedSourceIds, enabledLanguages, disabledSources, (lastUsedSource, contentMode), sources ->
             sources
                 .filter { it.lang in enabledLanguages || it.isLocal() }
                 .filterNot { it.id.toString() in disabledSources }
+                .filter { contentMode.matches(it.contentType) }
                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                 .flatMap {
                     val flag = if ("${it.id}" in pinnedSourceIds) Pins.pinned else Pins.unpinned

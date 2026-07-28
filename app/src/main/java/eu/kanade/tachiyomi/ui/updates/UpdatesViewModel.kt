@@ -8,6 +8,8 @@ import androidx.compose.ui.util.fastFilter
 import androidx.lifecycle.viewModelScope
 import eu.kanade.core.preference.asState
 import eu.kanade.core.util.addOrRemove
+import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.base.ContentModeFilter
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
@@ -62,6 +64,7 @@ class UpdatesViewModel(
     private val getChapter: GetChapter = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val updatesPreferences: UpdatesPreferences = Injekt.get(),
+    private val basePreferences: BasePreferences = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateViewModel<UpdatesViewModel.State>(State()) {
 
@@ -149,8 +152,13 @@ class UpdatesViewModel(
             }
         }
 
+        val contentMode = preferences.contentMode
+        val filterFnContentMode: (UpdatesItem) -> Boolean = {
+            contentMode.matches(sourceManager.getOrStub(it.update.sourceId).contentType)
+        }
+
         return fastFilter {
-            filterFnDownloaded(it)
+            filterFnDownloaded(it) && filterFnContentMode(it)
         }
     }
 
@@ -419,14 +427,15 @@ class UpdatesViewModel(
             updatesPreferences.filterUnread.changes(),
             updatesPreferences.filterStarted.changes(),
             updatesPreferences.filterBookmarked.changes(),
-            updatesPreferences.filterExcludedScanlators.changes(),
-        ) { downloaded, unread, started, bookmarked, excludedScanlators ->
+            combine(updatesPreferences.filterExcludedScanlators.changes(), basePreferences.contentMode.changes(), ::Pair),
+        ) { downloaded, unread, started, bookmarked, (excludedScanlators, contentMode) ->
             ItemPreferences(
                 filterDownloaded = downloaded,
                 filterUnread = unread,
                 filterStarted = started,
                 filterBookmarked = bookmarked,
                 filterExcludedScanlators = excludedScanlators,
+                contentMode = contentMode,
             )
         }
     }
@@ -442,6 +451,7 @@ class UpdatesViewModel(
         val filterStarted: TriState,
         val filterBookmarked: TriState,
         val filterExcludedScanlators: Boolean,
+        val contentMode: ContentModeFilter,
     )
 
     @Immutable

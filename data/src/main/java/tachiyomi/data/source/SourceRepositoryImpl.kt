@@ -93,5 +93,6 @@ class SourceRepositoryImpl(
         name = source.name,
         supportsLatest = false,
         isStub = false,
+        contentType = source.contentType,
     )
 }

@@ -5,6 +5,7 @@ import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.util.system.GLUtil
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.core.common.preference.getEnum
 import tachiyomi.i18n.MR
 
 class BasePreferences(
@@ -18,6 +19,11 @@ class BasePreferences(
     )
 
     val incognitoMode: Preference<Boolean> = preferenceStore.getBoolean(Preference.appStateKey("incognito_mode"), false)
+
+    val contentMode: Preference<ContentModeFilter> = preferenceStore.getEnum(
+        Preference.appStateKey("pref_content_mode"),
+        ContentModeFilter.ALL,
+    )
 
     val extensionInstaller: ExtensionInstallerPreference = ExtensionInstallerPreference(context, preferenceStore)
 

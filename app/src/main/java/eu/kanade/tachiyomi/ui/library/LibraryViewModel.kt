@@ -9,6 +9,7 @@ import eu.kanade.core.preference.PreferenceMutableState
 import eu.kanade.core.preference.asState
 import eu.kanade.core.util.fastFilterNot
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.base.ContentModeFilter
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
@@ -236,6 +237,11 @@ class LibraryViewModel(
             }
         }
 
+        val contentMode = preferences.contentMode
+        val filterFnContentMode: (LibraryItem) -> Boolean = {
+            contentMode.matches(sourceManager.getOrStub(it.libraryManga.manga.source).contentType)
+        }
+
         val filterFnTracking: (LibraryItem) -> Boolean = tracking@{ item ->
             if (isNotLoggedInAnyTrack || trackFiltersIsIgnored) return@tracking true
 
@@ -254,7 +260,8 @@ class LibraryViewModel(
                 filterFnBookmarked(it) &&
                 filterFnCompleted(it) &&
                 filterFnIntervalCustom(it) &&
-                filterFnTracking(it)
+                filterFnTracking(it) &&
+                filterFnContentMode(it)
         }
     }
 
@@ -368,6 +375,7 @@ class LibraryViewModel(
             libraryPreferences.filterBookmarked.changes(),
             libraryPreferences.filterCompleted.changes(),
             libraryPreferences.filterIntervalCustom.changes(),
+            preferences.contentMode.changes(),
         ) {
             ItemPreferences(
                 downloadBadge = it[0] as Boolean,
@@ -382,6 +390,7 @@ class LibraryViewModel(
                 filterBookmarked = it[9] as TriState,
                 filterCompleted = it[10] as TriState,
                 filterIntervalCustom = it[11] as TriState,
+                contentMode = it[12] as ContentModeFilter,
             )
         }
     }
@@ -757,6 +766,7 @@ class LibraryViewModel(
         val filterBookmarked: TriState,
         val filterCompleted: TriState,
         val filterIntervalCustom: TriState,
+        val contentMode: ContentModeFilter,
     )
 
     @Immutable
