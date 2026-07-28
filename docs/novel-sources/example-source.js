@@ -8,6 +8,19 @@ Register(JSON.stringify({
   baseUrl: "https://example.com",
   version: "1.0.0",
   supportsLatest: true,
+  // Optional - omit entirely if the site has no useful single-select filter. Each entry becomes
+  // one dropdown in the search filter sheet; searchNovels() gets the selected values back as
+  // { [id]: value } in filtersJson (only for filters the user actually changed from "Any").
+  filters: [
+    {
+      id: "genre",
+      name: "Genre",
+      options: [
+        { label: "Fantasy", value: "fantasy" },
+        { label: "Sci-fi", value: "sci-fi" },
+      ],
+    },
+  ],
 }));
 
 globalThis.source = {
@@ -37,8 +50,12 @@ globalThis.source = {
     return JSON.stringify({ novels: novels, hasNextPage: false });
   },
 
-  searchNovels: function (query, page) {
-    var html = fetchApi(baseUrlPath("/search?q=" + encodeURIComponent(query) + "&page=" + page)).text();
+  searchNovels: function (query, page, filtersJson) {
+    var filters = JSON.parse(filtersJson || "{}");
+    var url = baseUrlPath("/search?q=" + encodeURIComponent(query) + "&page=" + page);
+    if (filters.genre) url += "&genre=" + encodeURIComponent(filters.genre);
+
+    var html = fetchApi(url).text();
     var titles = selectAllText(html, ".novel-card .title");
     var urls = selectAllAttr(html, ".novel-card a.title", "href");
     var novels = titles.map(function (title, i) { return { title: title, url: urls[i] }; });

@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.source.novel
 import app.cash.quickjs.QuickJs
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.NovelSource
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -29,11 +30,18 @@ import java.security.MessageDigest
  *
  * The plugin script must, at top level:
  * 1. Call `Register(json)` exactly once with its own metadata: `id`, `name`, `lang`, `baseUrl`,
- *    and optionally `version`/`supportsLatest`.
+ *    and optionally `version`/`supportsLatest`/`filters`. `filters` (optional, defaults to none)
+ *    is a list of single-select genre-style filters shown in the search filter sheet:
+ *    `[{ id, name, options: [{ label, value }] }]` — `id` is an internal key only `searchNovels`
+ *    sees, `name`/`label` are what the user sees. Not every site has a usable one; it's fine to
+ *    omit entirely.
  * 2. Assign `globalThis.source` to an object implementing:
  *    - `popularNovels(page)` -> JSON `{ novels: [{ title, url, cover? }], hasNextPage }`
  *    - `latestNovels(page)` -> same shape as `popularNovels`
- *    - `searchNovels(query, page)` -> same shape as `popularNovels`
+ *    - `searchNovels(query, page, filtersJson)` -> same shape as `popularNovels`. `filtersJson` is
+ *      a JSON object of `{ [filterId]: selectedValue }` for every declared filter the user picked
+ *      a non-default option for (a filter left on its default/"Any" option is omitted entirely, so
+ *      `filtersJson` is `"{}"` for a plain search with no filters touched).
  *    - `novelDetails(url)` -> JSON `{ title?, cover?, author?, description?, genres?, status? }`
  *    - `chapterList(novelUrl)` -> JSON array of `{ name, url, chapterNumber?, dateUpload? }`
  *    - `chapterContent(chapterUrl)` -> plain string (not JSON), the chapter body
@@ -69,7 +77,15 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
     val baseUrl: String get() = metadata.baseUrl
     val version: String get() = metadata.version
 
-    override fun getFilterList(): FilterList = FilterList()
+    override fun getFilterList(): FilterList = FilterList(
+        metadata.filters.map { def ->
+            NovelSelectFilter(
+                name = def.name,
+                optionValues = listOf("") + def.options.map { it.value },
+                labels = (listOf(ANY_OPTION_LABEL) + def.options.map { it.label }).toTypedArray(),
+            )
+        },
+    )
 
     override suspend fun getPopularManga(page: Int): MangasPage = withIOContext {
         callListing("popularNovels", page)
@@ -82,7 +98,12 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
     override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = withIOContext {
         withEngine { engine, _ ->
             val api = engine.get(SOURCE_GLOBAL, SourcePluginApi::class.java)
-            parseListing(api.searchNovels(query, page))
+            val selections = metadata.filters.mapIndexedNotNull { index, def ->
+                val filter = filters.getOrNull(index) as? NovelSelectFilter ?: return@mapIndexedNotNull null
+                val value = filter.optionValues.getOrNull(filter.state)?.takeIf { it.isNotEmpty() } ?: return@mapIndexedNotNull null
+                def.id to value
+            }.toMap()
+            parseListing(api.searchNovels(query, page, Json.encodeToString(selections)))
         }
     }
 
@@ -213,6 +234,7 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
                             baseUrl = dto.baseUrl,
                             version = dto.version,
                             supportsLatest = dto.supportsLatest,
+                            filters = dto.filters,
                         )
                     }
                 },
@@ -257,6 +279,7 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
         private const val HTML_GLOBAL = "Html"
         private const val REGISTER_GLOBAL = "__register"
         private const val SOURCE_GLOBAL = "source"
+        private const val ANY_OPTION_LABEL = "Any"
 
         /**
          * Small JS shim giving plugin scripts a `fetchApi`-like convenience wrapper and shorter
@@ -319,6 +342,7 @@ private data class PluginMetadata(
     val baseUrl: String,
     val version: String,
     val supportsLatest: Boolean,
+    val filters: List<FilterDefDto> = emptyList(),
 )
 
 @Serializable
@@ -329,7 +353,26 @@ private data class PluginMetadataDto(
     val baseUrl: String,
     val version: String = "1.0.0",
     val supportsLatest: Boolean = true,
+    val filters: List<FilterDefDto> = emptyList(),
 )
+
+@Serializable
+private data class FilterOptionDto(val label: String, val value: String)
+
+@Serializable
+private data class FilterDefDto(val id: String, val name: String, val options: List<FilterOptionDto>)
+
+/**
+ * The concrete [Filter.Select] every plugin-declared filter becomes. `values` (inherited, what the
+ * filter-sheet UI displays) are the option labels prefixed with an "Any" no-op option at index 0;
+ * [optionValues] is the parallel list of the actual values to send back to the plugin, index-
+ * matched to `values` - `state` (inherited, the selected index) indexes into both.
+ */
+private class NovelSelectFilter(
+    name: String,
+    val optionValues: List<String>,
+    labels: Array<String>,
+) : Filter.Select<String>(name, labels)
 
 @Serializable
 private data class NovelListItemDto(val title: String, val url: String, val cover: String? = null)
@@ -381,7 +424,7 @@ private interface RegisterBridge {
 private interface SourcePluginApi {
     fun popularNovels(page: Int): String
     fun latestNovels(page: Int): String
-    fun searchNovels(query: String, page: Int): String
+    fun searchNovels(query: String, page: Int, filtersJson: String): String
     fun novelDetails(url: String): String
     fun chapterList(novelUrl: String): String
     fun chapterContent(chapterUrl: String): String

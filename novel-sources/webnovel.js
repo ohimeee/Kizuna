@@ -143,7 +143,9 @@ globalThis.source = {
     return parseRankingListing(html);
   },
 
-  searchNovels: function (query, page) {
+  // No usable single-value genre/category filter identified on Webnovel's search API - the third
+  // arg (filtersJson) is accepted for contract consistency but unused.
+  searchNovels: function (query, page, filtersJson) {
     var url = BASE_URL + "go/pcm/search/result" +
       "?_csrfToken=" + csrfToken() +
       "&pageIndex=" + page +

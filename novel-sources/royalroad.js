@@ -13,14 +13,43 @@
 //   `window.chapters`.
 // Everything else (title/author/description/genres/status/chapter-list selectors) matched the
 // original guess exactly.
+//
+// Genre filter: confirmed live (curl) that `/fictions/search?tagsAdd={value}` actually filters
+// results (repeatable, stable, and distinct from both unfiltered and other genres - not just
+// noise), using the primary genre tag values/labels scraped from the real search page's
+// `data-tag`/`data-label` button attributes, e.g. `data-tag="fantasy" data-label="Fantasy"`.
 
 Register(JSON.stringify({
   id: "royalroad",
   name: "Royal Road",
   lang: "en",
   baseUrl: "https://www.royalroad.com",
-  version: "1.0.0",
+  version: "1.1.0",
   supportsLatest: true,
+  filters: [
+    {
+      id: "genre",
+      name: "Genre",
+      options: [
+        { label: "Action", value: "action" },
+        { label: "Adventure", value: "adventure" },
+        { label: "Comedy", value: "comedy" },
+        { label: "Contemporary", value: "contemporary" },
+        { label: "Drama", value: "drama" },
+        { label: "Fantasy", value: "fantasy" },
+        { label: "Historical", value: "historical" },
+        { label: "Horror", value: "horror" },
+        { label: "Mystery", value: "mystery" },
+        { label: "Psychological", value: "psychological" },
+        { label: "Romance", value: "romance_main" },
+        { label: "Satire", value: "satire" },
+        { label: "Sci-fi", value: "sci_fi" },
+        { label: "Short Story", value: "one_shot" },
+        { label: "Thriller", value: "thriller" },
+        { label: "Tragedy", value: "tragedy" },
+      ],
+    },
+  ],
 }));
 
 function parseListing(html) {
@@ -79,11 +108,12 @@ globalThis.source = {
     return parseListing(html);
   },
 
-  searchNovels: function (query, page) {
-    var html = Http.get(
-      "https://www.royalroad.com/fictions/search?title=" + encodeURIComponent(query) + "&page=" + page,
-      "{}",
-    );
+  searchNovels: function (query, page, filtersJson) {
+    var filters = JSON.parse(filtersJson || "{}");
+    var url = "https://www.royalroad.com/fictions/search?title=" + encodeURIComponent(query) + "&page=" + page;
+    if (filters.genre) url += "&tagsAdd=" + encodeURIComponent(filters.genre);
+
+    var html = Http.get(url, "{}");
     return parseListing(html);
   },
 

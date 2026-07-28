@@ -22,6 +22,16 @@ A plugin script must, at the top level:
      baseUrl: "https://example.com",
      version: "1.0.0",          // optional, default "1.0.0"
      supportsLatest: true,      // optional, default true
+     filters: [                 // optional, default none — see "Search filters" below
+       {
+         id: "genre",
+         name: "Genre",
+         options: [
+           { label: "Fantasy", value: "fantasy" },
+           { label: "Sci-fi", value: "sci-fi" },
+         ],
+       },
+     ],
    }));
    ```
 2. Assign `globalThis.source` to an object implementing:
@@ -30,10 +40,29 @@ A plugin script must, at the top level:
    |---|---|
    | `popularNovels(page)` | JSON `{ novels: [{ title, url, cover? }], hasNextPage }` |
    | `latestNovels(page)` | same shape as `popularNovels` |
-   | `searchNovels(query, page)` | same shape as `popularNovels` |
+   | `searchNovels(query, page, filtersJson)` | same shape as `popularNovels` |
    | `novelDetails(url)` | JSON `{ title?, cover?, author?, description?, genres?, status? }` |
    | `chapterList(novelUrl)` | JSON array of `{ name, url, chapterNumber?, dateUpload? }` |
    | `chapterContent(chapterUrl)` | plain string (not JSON) — the chapter body |
+
+### Search filters
+
+`filters` in `Register(...)` declares single-select dropdowns shown in the search filter sheet
+(genre, category, etc — whatever single-value filter the site's search actually supports; most
+sites only have one, and a plugin can just omit `filters` entirely if there's nothing useful to
+filter by). Each one becomes a dropdown with an "Any" option prepended automatically.
+
+`searchNovels`'s third argument, `filtersJson`, is a JSON object of `{ [filterId]: selectedValue }`
+— only for filters the user actually picked something other than "Any" for, so a plain search with
+no filters touched gets `"{}"`:
+```js
+searchNovels: function (query, page, filtersJson) {
+  var filters = JSON.parse(filtersJson || "{}");
+  var url = "https://example.com/search?q=" + encodeURIComponent(query) + "&page=" + page;
+  if (filters.genre) url += "&genre=" + encodeURIComponent(filters.genre);
+  // ...
+},
+```
 
 `url` fields should be absolute URLs; the reader/library key chapters and novels by them.
 
@@ -54,7 +83,8 @@ there's no live document, just parse-a-string-and-query each time you call one o
 
 ## Limitations (current MVP)
 
-- No `FilterList`/genre-filter UI yet — `searchNovels` only takes a plain query string.
+- Filters are single-select only (one dropdown per declared filter) — no multi-select, checkboxes,
+  or sort options yet.
 - No streaming/progressive chapter loading — `chapterContent` returns the whole chapter at once.
 - Every call re-evaluates the plugin script in a fresh QuickJS instance (simplicity over
   performance for now); keep plugin scripts small.
