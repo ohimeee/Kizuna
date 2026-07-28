@@ -67,6 +67,7 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
     override val supportsLatest: Boolean get() = metadata.supportsLatest
 
     val baseUrl: String get() = metadata.baseUrl
+    val version: String get() = metadata.version
 
     override fun getFilterList(): FilterList = FilterList()
 

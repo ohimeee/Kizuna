@@ -2,6 +2,9 @@ package eu.kanade.tachiyomi.source.novel
 
 import android.content.Context
 import eu.kanade.tachiyomi.source.NovelSource
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import java.io.File
@@ -9,13 +12,25 @@ import java.io.File
 /**
  * Loads [NovelSource]s from `.js` plugin files placed in [directory].
  *
- * There's no install/download UI wired up yet (that's the natural next step once this MVP is
- * proven) — for now, sources are picked up by dropping a `.js` file (see
- * `docs/novel-sources/README.md` for the plugin contract) into this app-private directory, e.g.
- * via `adb push` during development.
+ * Sources are picked up either by [eu.kanade.tachiyomi.source.novel.NovelSourceInstaller]
+ * (install/update/uninstall UI, backed by a catalog JSON) or by dropping a `.js` file (see
+ * `docs/novel-sources/README.md` for the plugin contract) into this app-private directory
+ * directly, e.g. via `adb push` during development — either way, call [notifyChanged] afterwards
+ * so [eu.kanade.tachiyomi.source.AndroidSourceManager] picks up the change without needing a full
+ * app restart.
  */
 object NovelSourceLoader {
     private const val DIR_NAME = "novel_sources"
+
+    // replay = 1 so a late collector (AndroidSourceManager's init, which subscribes after this
+    // object already exists) still gets an initial value to combine with.
+    private val _changes = MutableSharedFlow<Unit>(replay = 1).apply { tryEmit(Unit) }
+    val changes: SharedFlow<Unit> = _changes.asSharedFlow()
+
+    /** Call after installing, updating, or removing a `.js` file in [directory]. */
+    fun notifyChanged() {
+        _changes.tryEmit(Unit)
+    }
 
     fun directory(context: Context): File = context.filesDir.resolve(DIR_NAME).apply { mkdirs() }
 

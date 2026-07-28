@@ -1,0 +1,16 @@
+[
+  {
+    "id": "royalroad",
+    "name": "Royal Road",
+    "lang": "en",
+    "version": "1.0.0",
+    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/royalroad.js"
+  },
+  {
+    "id": "webnovel",
+    "name": "Webnovel",
+    "lang": "en",
+    "version": "3.0.0",
+    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/webnovel.js"
+  }
+]
