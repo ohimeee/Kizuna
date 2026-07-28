@@ -4,7 +4,7 @@
     <img src="./.github/assets/logo.png" alt="Mihon logo" title="Mihon logo" width="80"/>
 </a>
 
-# Kizuna [App](#)
+# Kizuna [App](https://github.com/ohimeee/Kizuna/releases/latest)
 
 ### Manga/manhwa/manhua + light novel reader
 Discover and read manga, webtoons, comics, and light novels — in one unified library — on your Android device.
@@ -12,6 +12,11 @@ Discover and read manga, webtoons, comics, and light novels — in one unified l
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-0877d2.svg)](/LICENSE)
 
 *Requires Android 8.0 or higher.*
+
+## Download
+
+Grab the latest APK from the [Releases page](https://github.com/ohimeee/Kizuna/releases/latest).
+Kizuna is distributed as a direct APK download only (not on the Google Play Store).
 
 ## About
 
@@ -32,7 +37,7 @@ The novel-reading source format and JS extension engine follow patterns establis
 
 * Local reading of content.
 * A configurable reader with multiple viewers, reading directions and other settings (image content).
-* A native text reader with font size, theme, and line-spacing controls (novel content).
+* A native text reader with font size, font family (including bundled Lora and Nunito), theme, bionic reading, and line-spacing controls (novel content).
 * Cross-linking between a comic and its novel adaptation, with independently tracked progress per title.
 * Tracker support: [MangaBaka](https://mangabaka.org), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/), [Kitsu](https://kitsu.app/), [MangaUpdates](https://mangaupdates.com), [Shikimori](https://shikimori.one), [Bangumi](https://bgm.tv/), and [Hikka](https://hikka.io/) support.
 * Categories to organize your library.
