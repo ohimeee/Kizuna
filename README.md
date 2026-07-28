@@ -1,7 +1,7 @@
 <div align="center">
 
-<a href="https://mihon.app">
-    <img src="./.github/assets/logo.png" alt="Mihon logo" title="Mihon logo" width="80"/>
+<a href="https://github.com/ohimeee/Kizuna">
+    <img src="./.github/assets/kizuna-logo.png" alt="Kizuna logo" title="Kizuna logo" width="80"/>
 </a>
 
 # Kizuna [App](https://github.com/ohimeee/Kizuna/releases/latest)
