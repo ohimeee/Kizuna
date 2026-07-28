@@ -15,6 +15,17 @@
 -keep,allowoptimization class org.jsoup.** { public protected *; }
 -keep,allowoptimization class rx.** { public protected *; }
 -keep,allowoptimization class app.cash.quickjs.** { public protected *; }
+
+# JsNovelSource's *Bridge/SourcePluginApi interfaces are only ever called by app.cash.quickjs's
+# reflection-based engine.set()/get() (native QuickJs code looks methods up by their exact Kotlin
+# name to bridge calls to/from the JS plugin engine) - nothing in Kotlin bytecode calls them
+# directly, so R8's shrinker strips their method bodies as "unused" even though the blanket
+# eu.kanade.** keep above already protects the class shells. Broke every novel source in release
+# builds with QuickJsException: not a function (only ever caught because debug builds skip R8).
+-keep interface eu.kanade.tachiyomi.source.novel.HttpBridge { *; }
+-keep interface eu.kanade.tachiyomi.source.novel.HtmlBridge { *; }
+-keep interface eu.kanade.tachiyomi.source.novel.RegisterBridge { *; }
+-keep interface eu.kanade.tachiyomi.source.novel.SourcePluginApi { *; }
 -keep,allowoptimization class uy.kohesive.injekt.** { public protected *; }
 -keep,allowoptimization class com.squareup.zstd.** { public protected *; }
 
