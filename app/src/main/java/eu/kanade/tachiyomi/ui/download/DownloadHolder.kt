@@ -6,6 +6,7 @@ import eu.davidea.viewholders.FlexibleViewHolder
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.databinding.DownloadItemBinding
+import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.util.view.popupMenu
 
 /**
@@ -65,11 +66,18 @@ class DownloadHolder(private val view: View, val adapter: DownloadAdapter) :
     }
 
     /**
-     * Updates the text field of the number of downloaded pages.
+     * Updates the text field of the number of downloaded pages. Novel chapters download as a
+     * single synthetic "page" (see [Download]/[eu.kanade.tachiyomi.data.download.Downloader]), so
+     * a manga-style "N/1" fraction is meaningless there - show a plain downloading/downloaded
+     * label instead.
      */
     fun notifyDownloadedPages() {
         val pages = download.pages ?: return
-        binding.downloadProgressText.text = "${download.downloadedImages}/${pages.size}"
+        binding.downloadProgressText.text = if (download.source is NovelSource) {
+            if (download.downloadedImages >= pages.size) "Downloaded" else "Downloading…"
+        } else {
+            "${download.downloadedImages}/${pages.size}"
+        }
     }
 
     override fun onItemReleased(position: Int) {

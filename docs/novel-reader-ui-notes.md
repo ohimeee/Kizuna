@@ -8,6 +8,22 @@ accidentally undone earlier requests; this file exists so that stops happening.
 Scope note: **only the novel reader gets this treatment.** Manga/manhwa/manhua reader UI (Mihon's
 own `ReaderActivity`) stays untouched — explicit instruction, no changes there ever.
 
+## Global Settings mirror
+
+`NovelReaderPreferences` is also exposed from the app's global **Settings > Reader** screen
+(`app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsReaderScreen.kt`), not
+just the in-chapter bottom sheet — a Manga/Novel segmented-button switcher (`CustomPreference` +
+`MultiChoiceSegmentedButtonRow`, `selectedTab` state local to `getPreferences()`) toggles which
+preference-group list is shown; picking "Novel" swaps in `getNovelReaderGroup()` /
+`getNovelGeneralGroup()` instead of the manga groups. Manga reader settings/behavior are
+completely unaffected - only which group is *displayed* changes.
+
+**If you add/remove/rename a preference in `NovelReaderPreferences.kt`, mirror the same change in
+`SettingsReaderScreen.kt`'s two novel group functions** - these are two independent UIs reading
+the same underlying `Preference<T>` objects, and nothing enforces they stay in sync automatically.
+Titles/subtitles there are plain hardcoded strings (not `stringResource(MR.strings...)`) to match
+how the in-chapter sheet already does it - this fork doesn't localize the novel-specific additions.
+
 ## Rich text
 
 - Source HTML's inline formatting (`<b>`/`<strong>`, `<i>`/`<em>`, `<u>`) must render as real
@@ -23,9 +39,23 @@ own `ReaderActivity`) stays untouched — explicit instruction, no changes there
 
 Reader tab: text size, color (theme presets — white/cream/mint/gray/black/follow-system, swatch
 row with checkmark), text alignment (left/center/justify/right, custom-drawn icons since the
-extended Material icon pack isn't a dependency), line height, padding, font style (system generic
-families only — Original/Serif/Sans Serif/Monospace; **not** LNReader's actual bundled fonts like
-Lora/Nunito, those aren't shipped here and bundling licensed font files is out of scope).
+extended Material icon pack isn't a dependency), line height, padding, font style
+(Original/Serif/Sans Serif/Monospace generic system families, **plus Lora and Nunito as real
+bundled fonts** — variable-weight OFL-licensed TTFs under `app/src/main/res/font/`
+(`lora.ttf`/`lora_italic.ttf`/`nunito.ttf`/`nunito_italic.ttf`), license text under
+`docs/third-party-licenses/fonts/`. Built into actual Compose `FontFamily`s
+(`LoraFontFamily`/`NunitoFontFamily` in `NovelReaderScreen.kt`) using `FontVariation.weight(...)`
+per entry since each is a single variable-font file per style, not separate static files per
+weight — reversing an earlier decision that ruled this out as "out of scope"; the user asked for
+Lora specifically by name).
+
+The chapter **title is always the first paragraph** (the source HTML's own heading line — see
+`NovelReaderViewModel.splitParagraphs`), not a separately-modeled field. It's rendered forced-bold
+(`fontWeight = FontWeight.Bold` on that one `Text`, regardless of any inline styling in the source
+HTML) with one full blank line of extra space before the body text starts (`paragraphSpacing +
+(fontSize * lineSpacing).dp` as the bottom padding on just that item) — always, independent of the
+"remove extra spacing" preference. Implemented in the `itemsIndexed(paragraphs)` loop in
+`NovelReaderContent`, keyed off `index == 0`.
 
 General tab: fullscreen, battery & time, reading progress, vertical seekbar, remove extra spacing,
 bionic reading, keep screen on, auto-scroll (+ speed slider). **TTS explicitly excluded** — user
@@ -77,6 +107,14 @@ All backed by `NovelReaderPreferences.kt`.
   - Clock uses the **device's own 12h/24h system format**
     (`android.text.format.DateFormat.getTimeFormat(context)`), not a hardcoded `SimpleDateFormat`
     pattern — matches whatever the user has their phone set to instead of always showing 24h time.
+  - Segment order is **battery — progress — time** (progress in the middle), not the original
+    left-to-right progress/battery/time order from the reference screenshot.
+  - The row has a **solid backdrop matching the reading theme's page background color**
+    (`Modifier.background(backgroundColor)`, the same `backgroundColor` the page content itself
+    sits on — not the translucent `chromeBackground` used by the tap-hideable top bar/seekbar).
+    Needed because this footer is always visible now (not gated by `showControls`), so without an
+    opaque backing the last line of scrolling body text collides directly with the footer numbers
+    instead of stopping short of them.
   - Yes, this contradicts the LNReader research (they really do just leave the OS status bar
     showing, no custom widget). Went with the self-contained widget anyway after two rounds of the
     system-bar-coordination approach reading as "not working" — a Compose-level `if` is trivial to
@@ -201,6 +239,19 @@ All backed by `NovelReaderPreferences.kt`.
        default freezes at whatever it was at that point - consistent with "never overwrite a
        user's own sort choice on a manga already in the library" elsewhere in this codebase. The
        user can still flip it manually via the Sort tab same as any manga.
+
+## Tracker sync
+
+`NovelReaderViewModel.updateProgress()` mirrors `ReaderViewModel`'s tracker-sync call
+(`updateTrackChapterRead`) when a chapter transitions from unread to read (`markRead && !wasRead`,
+not on every scroll tick) - same `TrackChapter.await(context, manga.id, chapter.chapterNumber)`
+call, same `incognitoMode`/`trackPreferences.autoUpdateTrack` guards, via the same
+`GetIncognitoState`/`TrackPreferences`/`TrackChapter` interactors injected as extra constructor
+params. Before this, finishing a novel chapter updated the local DB (`read = true`) but never
+pushed "chapters read" to AniList/MAL/etc - found during a broader audit of manga-only assumptions
+elsewhere in the app (Updates screen's "Page: N" progress label was also wrong for novels, chapter
+downloads' download-queue UI showed a meaningless "N/1" for novel chapters - both fixed
+separately, outside this file's scope, in `UpdatesUiItem.kt` and `DownloadHolder.kt`).
 
 ## General debugging note for this screen
 

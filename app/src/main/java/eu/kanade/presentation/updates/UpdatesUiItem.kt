@@ -40,7 +40,9 @@ import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.presentation.util.relativeTimeSpanString
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.ui.updates.UpdatesItem
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.ListGroupHeader
@@ -48,6 +50,8 @@ import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.selectedBackground
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 internal fun LazyListScope.updatesLastUpdatedItem(
     lastUpdated: Long,
@@ -98,6 +102,14 @@ internal fun LazyListScope.updatesUiItems(
             }
             is UpdatesUiModel.Item -> {
                 val updatesItem = item.item
+                // `lastPageRead` is a page index for manga but a paragraph index for novels (see
+                // NovelReaderViewModel) - showing it as "Page: N" for a novel chapter is
+                // misleading, and a raw paragraph number means nothing without a total to compare
+                // it to, so novels just get a plain "in progress" label instead.
+                val sourceManager = remember { Injekt.get<SourceManager>() }
+                val isNovel = remember(updatesItem.update.sourceId) {
+                    sourceManager.get(updatesItem.update.sourceId)?.contentType == SourceContentType.NOVEL
+                }
                 UpdatesUiItem(
                     modifier = Modifier.animateItemFastScroll(),
                     update = updatesItem.update,
@@ -105,10 +117,14 @@ internal fun LazyListScope.updatesUiItems(
                     readProgress = updatesItem.update.lastPageRead
                         .takeIf { !updatesItem.update.read && it > 0L }
                         ?.let {
-                            stringResource(
-                                MR.strings.chapter_progress,
-                                it + 1,
-                            )
+                            if (isNovel) {
+                                "In progress"
+                            } else {
+                                stringResource(
+                                    MR.strings.chapter_progress,
+                                    it + 1,
+                                )
+                            }
                         },
                     onLongClick = {
                         onUpdateSelected(updatesItem, !updatesItem.selected, true)

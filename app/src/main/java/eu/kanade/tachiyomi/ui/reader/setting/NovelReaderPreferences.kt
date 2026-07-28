@@ -79,13 +79,17 @@ enum class NovelTextAlign {
 }
 
 /**
- * Font families available in the reader. Not a byte-for-byte match to LNReader's bundled fonts
- * (Lora/Nunito/etc - those aren't shipped with Kizuna and bundling licensed font files is out of
- * scope here); these map to Android's built-in generic font families instead.
+ * Font families available in the reader. `ORIGINAL`/`SERIF`/`SANS_SERIF`/`MONOSPACE` map to
+ * Android's built-in generic families; `LORA`/`NUNITO` are actual bundled fonts (variable-weight
+ * OFL-licensed TTFs under `res/font/`, license text under `docs/third-party-licenses/fonts/`) -
+ * see the `fontFamily` resolution in `NovelReaderScreen.kt` for how each is built into a real
+ * Compose `FontFamily`.
  */
 enum class NovelFontFamily {
     ORIGINAL,
     SERIF,
     SANS_SERIF,
     MONOSPACE,
+    LORA,
+    NUNITO,
 }

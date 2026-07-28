@@ -15,6 +15,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -38,7 +40,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -91,7 +93,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -99,6 +105,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
+import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.reader.NovelReaderViewModel
 import eu.kanade.tachiyomi.ui.reader.setting.NovelFontFamily
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
@@ -122,6 +129,26 @@ import kotlin.time.Duration.Companion.milliseconds
  * jarring sideways pop instead of a smooth fade). */
 private val chromeSlideAnimationSpec = tween<IntOffset>(200)
 private val chromeFadeAnimationSpec = tween<Float>(150)
+
+/**
+ * Bundled OFL-licensed variable-weight fonts (TTFs under `res/font/`, license text under
+ * `docs/third-party-licenses/fonts/`) - unlike the generic `FontFamily.Serif`/`SansSerif`
+ * options, these are real typefaces matching what LNReader itself offers. Each family is a single
+ * variable-font file per style (upright/italic); [FontVariation.weight] picks the specific weight
+ * out of it rather than needing separate static files per weight.
+ */
+private val LoraFontFamily = FontFamily(
+    Font(R.font.lora, weight = FontWeight.Normal, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
+    Font(R.font.lora, weight = FontWeight.Bold, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+    Font(R.font.lora_italic, weight = FontWeight.Normal, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
+    Font(R.font.lora_italic, weight = FontWeight.Bold, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+)
+private val NunitoFontFamily = FontFamily(
+    Font(R.font.nunito, weight = FontWeight.Normal, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
+    Font(R.font.nunito, weight = FontWeight.Bold, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+    Font(R.font.nunito_italic, weight = FontWeight.Normal, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
+    Font(R.font.nunito_italic, weight = FontWeight.Bold, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+)
 
 @Composable
 private fun chromeBackgroundColor() = MaterialTheme.colorScheme
@@ -466,6 +493,8 @@ private fun NovelReaderContent(
         NovelFontFamily.SERIF -> FontFamily.Serif
         NovelFontFamily.SANS_SERIF -> FontFamily.SansSerif
         NovelFontFamily.MONOSPACE -> FontFamily.Monospace
+        NovelFontFamily.LORA -> LoraFontFamily
+        NovelFontFamily.NUNITO -> NunitoFontFamily
     }
     val paragraphSpacing = if (removeExtraSpacing) MaterialTheme.padding.extraSmall else MaterialTheme.padding.medium
 
@@ -556,7 +585,12 @@ private fun NovelReaderContent(
                 .nestedScroll(nestedScrollConnection)
                 .offset { IntOffset(0, overscrollPx.roundToInt()) },
         ) {
-            items(paragraphs) { paragraph ->
+            itemsIndexed(paragraphs) { index, paragraph ->
+                // The chapter title is always the first paragraph (source HTML's own heading
+                // line, see NovelReaderViewModel.splitParagraphs) - always bold, with one blank
+                // line of extra space before the body starts, regardless of the
+                // "remove extra spacing" preference.
+                val isTitle = index == 0
                 val annotated = remember(paragraph, bionicReading) {
                     val base = parseInlineHtml(paragraph)
                     if (bionicReading) applyBionicReading(base) else base
@@ -565,10 +599,17 @@ private fun NovelReaderContent(
                     text = annotated,
                     color = textColor,
                     fontSize = fontSize.sp,
+                    fontWeight = if (isTitle) FontWeight.Bold else null,
                     lineHeight = (fontSize * lineSpacing).sp,
                     textAlign = textAlign,
                     fontFamily = fontFamily,
-                    modifier = Modifier.padding(bottom = paragraphSpacing),
+                    modifier = Modifier.padding(
+                        bottom = if (isTitle) {
+                            paragraphSpacing + (fontSize * lineSpacing).dp
+                        } else {
+                            paragraphSpacing
+                        },
+                    ),
                 )
             }
 
@@ -737,7 +778,9 @@ private fun NovelReaderTabSettings(preferences: NovelReaderPreferences) {
             Text(text = "Font style", style = MaterialTheme.typography.labelLarge)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-                modifier = Modifier.padding(top = MaterialTheme.padding.small),
+                modifier = Modifier
+                    .padding(top = MaterialTheme.padding.small)
+                    .horizontalScroll(rememberScrollState()),
             ) {
                 NovelFontFamily.entries.forEach { option ->
                     FilterChip(

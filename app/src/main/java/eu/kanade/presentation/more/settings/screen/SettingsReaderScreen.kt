@@ -1,11 +1,29 @@
 package eu.kanade.presentation.more.settings.screen
 
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MultiChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.widget.BasePreferenceWidget
+import eu.kanade.presentation.more.settings.widget.PrefsHorizontalPadding
+import eu.kanade.tachiyomi.ui.reader.setting.NovelFontFamily
+import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderTheme
+import eu.kanade.tachiyomi.ui.reader.setting.NovelTextAlign
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
@@ -17,6 +35,7 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.NumberFormat
+import kotlin.math.roundToInt
 
 object SettingsReaderScreen : SearchableSettings {
 
@@ -27,8 +46,54 @@ object SettingsReaderScreen : SearchableSettings {
     @Composable
     override fun getPreferences(): List<Preference> {
         val readerPref = remember { Injekt.get<ReaderPreferences>() }
+        val novelReaderPref = remember { Injekt.get<NovelReaderPreferences>() }
+
+        // Manga/manhwa/manhua reader settings below are Mihon's own and stay untouched by this
+        // tab switcher - only which group of settings is SHOWN toggles, nothing about how either
+        // reader type itself behaves. Lets novel reader defaults be configured from global
+        // Settings instead of only from a bottom sheet inside an already-open chapter.
+        var selectedTab by remember { mutableIntStateOf(0) }
+
+        val tabSwitcher = Preference.PreferenceItem.CustomPreference(title = "Reader type") {
+            BasePreferenceWidget(
+                subcomponent = {
+                    MultiChoiceSegmentedButtonRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(intrinsicSize = IntrinsicSize.Min)
+                            .padding(horizontal = PrefsHorizontalPadding),
+                    ) {
+                        SegmentedButton(
+                            modifier = Modifier.fillMaxHeight(),
+                            checked = selectedTab == 0,
+                            onCheckedChange = { selectedTab = 0 },
+                            shape = SegmentedButtonDefaults.itemShape(0, 2),
+                        ) {
+                            Text("Manga")
+                        }
+                        SegmentedButton(
+                            modifier = Modifier.fillMaxHeight(),
+                            checked = selectedTab == 1,
+                            onCheckedChange = { selectedTab = 1 },
+                            shape = SegmentedButtonDefaults.itemShape(1, 2),
+                        ) {
+                            Text("Novel")
+                        }
+                    }
+                },
+            )
+        }
+
+        if (selectedTab == 1) {
+            return listOf(
+                tabSwitcher,
+                getNovelReaderGroup(novelReaderPreferences = novelReaderPref),
+                getNovelGeneralGroup(novelReaderPreferences = novelReaderPref),
+            )
+        }
 
         return listOf(
+            tabSwitcher,
             Preference.PreferenceItem.ListPreference(
                 preference = readerPref.defaultReadingMode,
                 entries = ReadingMode.entries.drop(1)
@@ -65,6 +130,123 @@ object SettingsReaderScreen : SearchableSettings {
             getWebtoonGroup(readerPreferences = readerPref),
             getNavigationGroup(readerPreferences = readerPref),
             getActionsGroup(readerPreferences = readerPref),
+        )
+    }
+
+    /** Splits an ENUM_CONSTANT name into "Enum Constant" for display, matching the label style
+     * NovelReaderScreen's own in-chapter settings sheet already uses for these same enums. */
+    private fun enumLabel(name: String) = name.split("_").joinToString(" ") {
+        it.lowercase().replaceFirstChar(Char::uppercase)
+    }
+
+    @Composable
+    private fun getNovelReaderGroup(novelReaderPreferences: NovelReaderPreferences): Preference.PreferenceGroup {
+        val fontSizePref = novelReaderPreferences.fontSize
+        val fontSize by fontSizePref.collectAsState()
+
+        val lineSpacingPref = novelReaderPreferences.lineSpacing
+        val lineSpacing by lineSpacingPref.collectAsState()
+
+        val paddingPref = novelReaderPreferences.contentPadding
+        val padding by paddingPref.collectAsState()
+
+        return Preference.PreferenceGroup(
+            title = "Reader",
+            preferenceItems = listOf(
+                Preference.PreferenceItem.SliderPreference(
+                    value = fontSize,
+                    valueRange = NovelReaderPreferences.MIN_FONT_SIZE..NovelReaderPreferences.MAX_FONT_SIZE,
+                    title = "Text size",
+                    valueString = "${fontSize}sp",
+                    onValueChanged = { fontSizePref.set(it) },
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = novelReaderPreferences.theme,
+                    entries = NovelReaderTheme.entries.associateWith { enumLabel(it.name) },
+                    title = "Color",
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = novelReaderPreferences.textAlign,
+                    entries = NovelTextAlign.entries.associateWith { enumLabel(it.name) },
+                    title = "Text alignment",
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = (lineSpacing * 10).roundToInt(),
+                    valueRange = (NovelReaderPreferences.MIN_LINE_SPACING * 10).roundToInt()..
+                        (NovelReaderPreferences.MAX_LINE_SPACING * 10).roundToInt(),
+                    title = "Line height",
+                    valueString = "${"%.1f".format(lineSpacing)}x",
+                    onValueChanged = { lineSpacingPref.set(it / 10f) },
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = padding,
+                    valueRange = NovelReaderPreferences.MIN_PADDING..NovelReaderPreferences.MAX_PADDING,
+                    title = "Padding",
+                    valueString = "${padding}dp",
+                    onValueChanged = { paddingPref.set(it) },
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = novelReaderPreferences.fontFamily,
+                    entries = NovelFontFamily.entries.associateWith { enumLabel(it.name) },
+                    title = "Font style",
+                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun getNovelGeneralGroup(novelReaderPreferences: NovelReaderPreferences): Preference.PreferenceGroup {
+        val autoScroll by novelReaderPreferences.autoScroll.collectAsState()
+
+        val autoScrollSpeedPref = novelReaderPreferences.autoScrollSpeed
+        val autoScrollSpeed by autoScrollSpeedPref.collectAsState()
+
+        return Preference.PreferenceGroup(
+            title = "General",
+            preferenceItems = listOf(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelReaderPreferences.fullscreen,
+                    title = "Fullscreen",
+                    subtitle = "Hide the status bar and navigation bar while reading",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelReaderPreferences.showBatteryAndTime,
+                    title = "Battery & time",
+                    subtitle = "Show reading progress, battery level and clock over the reading screen, " +
+                        "even when hidden",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelReaderPreferences.showVerticalSeekbar,
+                    title = "Vertical seekbar",
+                    subtitle = "Show a slider on the side to jump to any point in the chapter",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelReaderPreferences.removeExtraSpacing,
+                    title = "Remove extra spacing",
+                    subtitle = "Reduce blank space between paragraphs",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelReaderPreferences.bionicReading,
+                    title = "Bionic reading",
+                    subtitle = "Bold the first part of each word to help guide the eye",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelReaderPreferences.keepScreenOn,
+                    title = "Keep screen on",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelReaderPreferences.autoScroll,
+                    title = "Auto-scroll",
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = autoScrollSpeed,
+                    valueRange = NovelReaderPreferences.MIN_AUTO_SCROLL_SPEED..
+                        NovelReaderPreferences.MAX_AUTO_SCROLL_SPEED,
+                    title = "Auto-scroll speed",
+                    enabled = autoScroll,
+                    onValueChanged = { autoScrollSpeedPref.set(it) },
+                ),
+            ),
         )
     }
 

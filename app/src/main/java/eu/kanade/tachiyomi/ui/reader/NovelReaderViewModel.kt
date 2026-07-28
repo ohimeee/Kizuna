@@ -1,9 +1,13 @@
 package eu.kanade.tachiyomi.ui.reader
 
+import android.app.Application
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eu.kanade.domain.chapter.model.toSChapter
+import eu.kanade.domain.source.interactor.GetIncognitoState
+import eu.kanade.domain.track.interactor.TrackChapter
+import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.NovelSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
@@ -41,6 +46,9 @@ class NovelReaderViewModel @JvmOverloads constructor(
     private val updateChapter: UpdateChapter = Injekt.get(),
     private val upsertHistory: UpsertHistory = Injekt.get(),
     private val downloadManager: DownloadManager = Injekt.get(),
+    private val getIncognitoState: GetIncognitoState = Injekt.get(),
+    private val trackPreferences: TrackPreferences = Injekt.get(),
+    private val trackChapter: TrackChapter = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -51,6 +59,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
     private var chapterList: List<Chapter> = emptyList()
     private var chapterReadStartTime: Long? = null
     private var initialized = false
+    private val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
 
     fun needsInit() = !initialized
 
@@ -136,14 +145,35 @@ class NovelReaderViewModel @JvmOverloads constructor(
     /** Called by the reader UI as the user scrolls; persists the paragraph index as progress. */
     fun updateProgress(paragraphIndex: Int, isAtEnd: Boolean) {
         val chapter = state.value.chapter ?: return
-        val markRead = isAtEnd || chapter.read
+        val wasRead = chapter.read
+        val markRead = isAtEnd || wasRead
         viewModelScope.launch {
             updateChapter.await(
                 ChapterUpdate(id = chapter.id, lastPageRead = paragraphIndex.toLong(), read = markRead),
             )
         }
+        if (markRead && !wasRead) {
+            updateTrackChapterRead(chapter)
+        }
         mutableState.update {
             it.copy(chapter = chapter.copy(lastPageRead = paragraphIndex.toLong(), read = markRead))
+        }
+    }
+
+    /**
+     * Mirrors [ReaderViewModel]'s tracker sync (same [TrackChapter] call, same incognito/
+     * auto-update guards) - without this, finishing a novel chapter never updates "chapters read"
+     * on AniList/MAL/etc, unlike the manga reader.
+     */
+    private fun updateTrackChapterRead(chapter: Chapter) {
+        if (incognitoMode) return
+        if (!trackPreferences.autoUpdateTrack.get()) return
+
+        val manga = manga ?: return
+        val context = Injekt.get<Application>()
+
+        viewModelScope.launchNonCancellable {
+            trackChapter.await(context, manga.id, chapter.chapterNumber)
         }
     }
 
