@@ -41,6 +41,7 @@ import eu.kanade.presentation.manga.components.SetIntervalDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
+import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.source.isLocalOrStub
@@ -105,7 +106,7 @@ class MangaScreen(
         }
 
         val successState = state as MangaViewModel.State.Success
-        val isHttpSource = remember { successState.source is HttpSource }
+        val isHttpSource = remember { successState.source is HttpSource || successState.source is NovelSource }
 
         LaunchedEffect(successState.manga, viewModel.source) {
             if (isHttpSource) {
@@ -330,10 +331,13 @@ class MangaScreen(
 
     private fun getMangaUrl(manga_: Manga?, source_: Source?): String? {
         val manga = manga_ ?: return null
-        val source = source_ as? HttpSource ?: return null
 
         return try {
-            source.getMangaUrl(manga.toSManga())
+            when (source_) {
+                is HttpSource -> source_.getMangaUrl(manga.toSManga())
+                is NovelSource -> source_.getMangaUrl(manga.toSManga())
+                else -> null
+            }
         } catch (e: Exception) {
             null
         }

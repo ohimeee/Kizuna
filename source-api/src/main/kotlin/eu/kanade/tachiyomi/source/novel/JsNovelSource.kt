@@ -77,6 +77,8 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
     val baseUrl: String get() = metadata.baseUrl
     val version: String get() = metadata.version
 
+    override fun getHomeUrl(): String = baseUrl
+
     override fun getFilterList(): FilterList = FilterList(
         metadata.filters.map { def ->
             NovelSelectFilter(

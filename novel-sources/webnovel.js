@@ -1,27 +1,28 @@
 // Webnovel (webnovel.com) — Qidian International's official licensed-translation platform.
 // Written independently against Kizuna's NovelSource contract (see docs/novel-sources/README.md).
 //
-// REWRITE NOTE #2: the first rewrite of this file targeted `www.webnovel.com`'s desktop HTML,
-// verified working via curl with a desktop User-Agent. On-device it still came back empty — turns
-// out webnovel.com 302-redirects any request whose User-Agent looks like Android straight to
-// `m.webnovel.com`, whose markup is completely different (a Next.js page: no `.g_thumb` ranking
-// anchors, no `.volume-item` catalog list — chapter data instead lives inside a `__NEXT_DATA__`
-// JSON blob). Confirmed on-device via Logcat (OkHttp request/response logging) showing the 302,
-// then re-verified every endpoint below directly against `m.webnovel.com` with an Android UA
-// before rewriting again. Base URL is `m.webnovel.com` throughout now, so there's no redirect to
-// follow at all.
+// REWRITE NOTE #3: popularNovels/latestNovels previously scraped m.webnovel.com's ranking pages
+// (REWRITE NOTE #2 below), which turned out to be a fixed, non-personalized top-20 list that
+// completely ignores pageIndex (page 1 and page 300 come back byte-identical, confirmed live) -
+// not a real feed at all, just always the same 20 books. Fixed here by doing what LNReader's own
+// (real, working) Webnovel plugin does: fetch `www.webnovel.com/stories/novel` directly with a
+// spoofed *desktop* User-Agent via the `headers` param on `Http.get`. `www.webnovel.com` only
+// redirects to the broken m. subdomain when it detects an Android-looking UA - Kizuna's shared
+// OkHttp client's UserAgentInterceptor only fills in its own default UA when a request doesn't
+// already specify one (confirmed by reading UserAgentInterceptor.kt), so a plugin-supplied
+// User-Agent header is honored as-is. `www.webnovel.com/stories/novel` is real, server-rendered,
+// genuinely paginated HTML (confirmed live: page 1 vs page 2 return meaningfully different books),
+// and its genre-browse URLs (`/stories/{genre-slug}`) are real working filters too - both were
+// missed entirely in the earlier m.-subdomain-only investigation.
 //
-// - popularNovels/latestNovels scrape `/ranking/novel/all_time/{popular,update}_rank?pageIndex=N`.
-//   On m., real book entries are `a[data-report-uiname="bookcover"]` (title attr, href, and
-//   data-report-did=bookId) - a plain `[data-report-did]` selector also catches the page's own
-//   tab-nav links ("Novels"/"Fan-fic", with tiny ids 1/4), which is not obvious without the real
-//   HTML in front of you. No cover image is in the server HTML at all (client lazy-loaded), so the
-//   cover is constructed from the bookId via `coverUrl()` instead of scraped. Fixed top-N ranking
-//   lists, not a true infinite feed, so hasNextPage just reflects "did this page return anything".
+// - popularNovels/latestNovels scrape `www.webnovel.com/stories/{genre-or-"novel"}?orderBy=N`
+//   (orderBy=1 popular, orderBy=5 time-updated - same codes LNReader's plugin uses). Listing items
+//   are `.g_thumb` anchors (title attr, href) with `.g_thumb > img[data-original]` for cover.
 // - searchNovels calls the site's own JSON API: `/go/pcm/search/result`. This (and the two
 //   endpoints below) require a `_csrfToken` query param that must match a same-named cookie the
 //   site sets on first visit — see `csrfToken()`, backed by the `Http.getCookie` bridge. Confirmed
-//   identical response shape on m. as on www.
+//   identical response shape on m. as on www. Left on m.webnovel.com since it already works there
+//   with the app's normal (Android) UA and isn't affected by the redirect issue above.
 // - novelDetails and the first-chapter-content fetch both go through
 //   `/go/pcm/chapter/getContent?bookId=X&chapterId=0`, which is what the real site calls to hydrate
 //   a book page — it returns `bookInfo` (title/author/tags/etc) *and* the first chapter's body in
@@ -46,11 +47,57 @@ Register(JSON.stringify({
   name: "Webnovel",
   lang: "en",
   baseUrl: "https://m.webnovel.com",
-  version: "3.0.0",
+  version: "4.1.0",
   supportsLatest: true,
+  // Genre slugs/labels and sort codes taken from LNReader's real, working Webnovel plugin. Genre:
+  // the "male" bucket (www.webnovel.com splits genres by a gender axis LNReader exposes as two
+  // separate filters; collapsed into one list here since Kizuna's filter contract is single-select
+  // only). Sort: orderBy codes used by /stories/{genre}?orderBy=N.
+  filters: [
+    {
+      id: "genre",
+      name: "Genre",
+      options: [
+        { label: "Action", value: "novel-action-male" },
+        { label: "Animation, Comics, Games", value: "novel-acg-male" },
+        { label: "Eastern", value: "novel-eastern-male" },
+        { label: "Fantasy", value: "novel-fantasy-male" },
+        { label: "Games", value: "novel-games-male" },
+        { label: "History", value: "novel-history-male" },
+        { label: "Horror", value: "novel-horror-male" },
+        { label: "Realistic", value: "novel-realistic-male" },
+        { label: "Sci-fi", value: "novel-scifi-male" },
+        { label: "Sports", value: "novel-sports-male" },
+        { label: "Urban", value: "novel-urban-male" },
+        { label: "War", value: "novel-war-male" },
+        { label: "LGBT+", value: "novel-lgbt-female" },
+        { label: "Teen", value: "novel-teen-female" },
+      ],
+    },
+    {
+      id: "sort",
+      name: "Sort Results By",
+      options: [
+        { label: "Popular", value: "1" },
+        { label: "Recommended", value: "2" },
+        { label: "Most Collections", value: "3" },
+        { label: "Rating", value: "4" },
+        { label: "Time Updated", value: "5" },
+      ],
+    },
+  ],
 }));
 
 var BASE_URL = "https://m.webnovel.com/";
+var WWW_BASE_URL = "https://www.webnovel.com/";
+
+// www.webnovel.com redirects any Android-looking User-Agent to the m. subdomain (whose ranking
+// pages don't actually paginate - see file header). Spoofing a desktop UA for requests that need
+// to stay on www. avoids that redirect; confirmed Kizuna's shared OkHttp client only fills in its
+// own UA when a request doesn't already carry one, so this override sticks.
+var DESKTOP_HEADERS = JSON.stringify({
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+});
 
 function csrfToken() {
   var token = Http.getCookie(BASE_URL, "_csrfToken");
@@ -93,18 +140,21 @@ function parseChapterUrl(url) {
   };
 }
 
-function parseRankingListing(html) {
-  // data-report-did also appears on the page's tab-nav links ("Novels"/"Fan-fic", ids 1/4) -
-  // data-report-uiname="bookcover" is what actually distinguishes real book entries from those.
-  var urls = selectAllAttr(html, 'a[data-report-uiname="bookcover"]', "href");
-  var titles = selectAllAttr(html, 'a[data-report-uiname="bookcover"]', "title");
-  var bookIds = selectAllAttr(html, 'a[data-report-uiname="bookcover"]', "data-report-did");
+// www.webnovel.com's /stories/{genre} listing pages - real server-rendered HTML, genuinely
+// paginated (unlike the m. ranking pages this used to scrape). Matches LNReader's real plugin's
+// selectors exactly.
+function parseListing(html) {
+  var urls = selectAllAttr(html, ".g_thumb", "href");
+  var titles = selectAllAttr(html, ".g_thumb", "title");
+  var covers = selectAllAttr(html, ".g_thumb > img", "data-original");
 
   var novels = urls.map(function (url, i) {
+    var cover = covers[i] || null;
+    if (cover && cover.indexOf("http") !== 0) cover = "https:" + cover;
     return {
       title: titles[i] || "",
       url: absoluteUrl(url),
-      cover: bookIds[i] ? coverUrl(bookIds[i]) : null,
+      cover: cover,
     };
   }).filter(function (n) { return n.title && n.url; });
 
@@ -134,24 +184,38 @@ function formatChapterBody(info) {
 globalThis.source = {
 
   popularNovels: function (page) {
-    var html = Http.get(BASE_URL + "ranking/novel/all_time/popular_rank?pageIndex=" + page, "{}");
-    return parseRankingListing(html);
+    var url = WWW_BASE_URL + "stories/novel?orderBy=1&pageIndex=" + page;
+    return parseListing(Http.get(url, DESKTOP_HEADERS));
   },
 
   latestNovels: function (page) {
-    var html = Http.get(BASE_URL + "ranking/novel/all_time/update_rank?pageIndex=" + page, "{}");
-    return parseRankingListing(html);
+    var url = WWW_BASE_URL + "stories/novel?orderBy=5&pageIndex=" + page;
+    return parseListing(Http.get(url, DESKTOP_HEADERS));
   },
 
-  // No usable single-value genre/category filter identified on Webnovel's search API - the third
-  // arg (filtersJson) is accepted for contract consistency but unused.
+  // IMPORTANT: the app's filter sheet (genre/sort above) always calls searchNovels, never
+  // popularNovels/latestNovels directly - Mihon's source model only ever threads FilterList
+  // through the search entry point, confirmed by reading BrowseSourceViewModel.Listing. So genre/
+  // sort browsing (no keyword) is handled here too, via the same www. stories/{genre} listing
+  // popularNovels uses, rather than the go/pcm keyword-search JSON API (which ignores a
+  // categoryId param entirely and changes response shape when keywords is empty - confirmed live
+  // that it isn't a usable filtered-browse path at all).
   searchNovels: function (query, page, filtersJson) {
-    var url = BASE_URL + "go/pcm/search/result" +
+    var filters = JSON.parse(filtersJson || "{}");
+
+    if (!query && (filters.genre || filters.sort)) {
+      var path = filters.genre || "novel";
+      var orderBy = filters.sort || "1";
+      var url = WWW_BASE_URL + "stories/" + path + "?orderBy=" + orderBy + "&pageIndex=" + page;
+      return parseListing(Http.get(url, DESKTOP_HEADERS));
+    }
+
+    var searchUrl = BASE_URL + "go/pcm/search/result" +
       "?_csrfToken=" + csrfToken() +
       "&pageIndex=" + page +
       "&encryptType=3&_fsae=0" +
       "&keywords=" + encodeURIComponent(query);
-    var json = Http.get(url, "{}");
+    var json = Http.get(searchUrl, "{}");
 
     var data;
     try { data = JSON.parse(json); } catch (e) { data = null; }

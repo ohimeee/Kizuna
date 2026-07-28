@@ -45,6 +45,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
     val state: StateFlow<State> = mutableState.asStateFlow()
 
     private var manga: Manga? = null
+    private var source: NovelSource? = null
     private var chapterList: List<Chapter> = emptyList()
     private var chapterReadStartTime: Long? = null
     private var initialized = false
@@ -59,6 +60,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
 
             val source = sourceManager.get(manga.source) as? NovelSource
                 ?: error("Source ${manga.source} is not a novel source")
+            this.source = source
 
             chapterList = getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true)
                 .sortedWith(getChapterSort(manga, sortDescending = false))
@@ -124,6 +126,12 @@ class NovelReaderViewModel @JvmOverloads constructor(
             val duration = System.currentTimeMillis() - startTime
             upsertHistory.await(HistoryUpdate(chapter.id, Date(), duration))
         }
+    }
+
+    /** URL of the currently displayed chapter, for "Open in WebView". */
+    fun getChapterUrl(): String? {
+        val chapter = state.value.chapter ?: return null
+        return source?.getChapterUrl(chapter.toSChapter())
     }
 
     fun loadNextChapter() = loadAdjacentChapter(offset = 1)

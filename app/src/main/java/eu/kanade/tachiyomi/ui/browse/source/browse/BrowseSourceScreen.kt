@@ -45,6 +45,7 @@ import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.extension.details.SourcePreferencesScreen
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceViewModel.Listing
@@ -114,18 +115,27 @@ data class BrowseSourceScreen(
 
         val onHelpClick = { uriHandler.openUri(LocalSource.HELP_URL) }
         val onWebViewClick = f@{
-            val source = viewModel.source as? HttpSource ?: return@f
+            val source = viewModel.source
+            val homeUrl = when (source) {
+                is HttpSource -> source.getHomeUrl()
+                is NovelSource -> source.getHomeUrl()
+                else -> return@f
+            }
             navigator.push(
                 WebViewScreen(
-                    url = source.getHomeUrl(),
-                    initialTitle = source.name,
-                    sourceId = source.id,
+                    url = homeUrl,
+                    initialTitle = source?.name,
+                    sourceId = source?.id,
                 ),
             )
         }
 
         LaunchedEffect(viewModel.source) {
-            assistUrl = (viewModel.source as? HttpSource)?.getHomeUrl()
+            assistUrl = when (val source = viewModel.source) {
+                is HttpSource -> source.getHomeUrl()
+                is NovelSource -> source.getHomeUrl()
+                else -> null
+            }
         }
 
         Scaffold(

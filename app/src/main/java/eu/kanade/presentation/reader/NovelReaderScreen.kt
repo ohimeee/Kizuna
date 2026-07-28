@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,6 +61,7 @@ fun NovelReaderScreen(
     onProgress: (paragraphIndex: Int, isAtEnd: Boolean) -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    onOpenInWebView: (() -> Unit)? = null,
 ) {
     val theme by preferences.theme.collectAsState()
     val backgroundColor = if (theme == NovelReaderTheme.FOLLOW_SYSTEM) {
@@ -91,6 +93,11 @@ fun NovelReaderScreen(
                     }
                 },
                 actions = {
+                    if (onOpenInWebView != null) {
+                        IconButton(onClick = onOpenInWebView) {
+                            Icon(Icons.Filled.Public, contentDescription = null)
+                        }
+                    }
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Filled.Settings, contentDescription = null)
                     }

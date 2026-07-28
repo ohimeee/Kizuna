@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
+import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.launch
 import uy.kohesive.injekt.Injekt
@@ -67,6 +68,7 @@ class NovelReaderActivity : BaseActivity() {
                 onProgress = viewModel::updateProgress,
                 onPrevChapter = viewModel::loadPreviousChapter,
                 onNextChapter = viewModel::loadNextChapter,
+                onOpenInWebView = { openInWebView() },
             )
         }
     }
@@ -74,5 +76,10 @@ class NovelReaderActivity : BaseActivity() {
     override fun onPause() {
         super.onPause()
         viewModel.saveHistory()
+    }
+
+    private fun openInWebView() {
+        val url = viewModel.getChapterUrl() ?: return
+        startActivity(WebViewActivity.newIntent(this, url, title = viewModel.state.value.chapter?.name))
     }
 }

@@ -10,7 +10,14 @@
     "id": "webnovel",
     "name": "Webnovel",
     "lang": "en",
-    "version": "3.0.0",
+    "version": "4.1.0",
     "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/webnovel.js"
+  },
+  {
+    "id": "novelfire",
+    "name": "NovelFire",
+    "lang": "en",
+    "version": "2.0.0",
+    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/novelfire.js"
   }
 ]
