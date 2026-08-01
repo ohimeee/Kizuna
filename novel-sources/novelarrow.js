@@ -45,7 +45,7 @@ Register(JSON.stringify({
   name: "NovelArrow",
   lang: "en",
   baseUrl: "https://novelarrow.com",
-  version: "1.1.0",
+  version: "1.1.1",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelarrow.com",
   // Slugs scraped from the real site-wide genre nav (/genre/{slug} links on the homepage).
@@ -193,20 +193,28 @@ globalThis.source = {
   searchNovels: function (query, page, filtersJson) {
     var filters = JSON.parse(filtersJson || "{}");
 
-    if (!query && filters.genre) {
+    if (query) {
+      var searchUrl = BASE_URL + "novels/search?keyword=" + encodeURIComponent(query) + "&page=" + page;
+      return parseListing(Http.get(searchUrl, "{}"));
+    }
+
+    // No keyword ("Any" or genre/sort/language browsing). IMPORTANT: never fall through to
+    // novels/search with an empty keyword here - confirmed live that returns 0 results, not "no
+    // filter applied" (that was a real bug: picking nothing but "Any" showed an empty list).
+    if (filters.genre) {
       var url = BASE_URL + "genre/" + encodeURIComponent(filters.genre) + "?page=" + page;
       if (filters.sort) url += "&sort=" + filters.sort;
       if (filters.language) url += "&language=" + filters.language;
       return parseListing(Http.get(url, "{}"));
     }
 
-    if (!query && filters.sort) {
-      var listPath = filters.sort === "POPULAR" ? "novels/popular" : "novels/latest";
-      return parseListing(Http.get(BASE_URL + listPath + "?page=" + page, "{}"));
-    }
-
-    var searchUrl = BASE_URL + "novels/search?keyword=" + encodeURIComponent(query) + "&page=" + page;
-    return parseListing(Http.get(searchUrl, "{}"));
+    // Sort/language only take effect when paired with a genre - confirmed live that
+    // novels/latest and novels/popular both silently ignore ?sort=/?language= entirely (every
+    // sort value tested gave byte-identical top results), and the ranking page's Weekly/Monthly/
+    // All-Time toggle is client-fetched with no URL param equivalent. Without a genre, the best
+    // this source can honestly do is bucket into the two listings that are genuinely distinct.
+    var listPath = (filters.sort === "POPULAR" || filters.sort === "ALL_TIME") ? "novels/popular" : "novels/latest";
+    return parseListing(Http.get(BASE_URL + listPath + "?page=" + page, "{}"));
   },
 
   novelDetails: function (url) {
