@@ -12,24 +12,78 @@ import androidx.compose.ui.text.style.TextDecoration
  * angle-bracket text in the output. */
 private val ANY_TAG_REGEX = Regex("<(/?)\\s*([a-zA-Z0-9]+)[^>]*>")
 
-private val HTML_ENTITIES = mapOf(
-    "&amp;" to "&",
-    "&lt;" to "<",
-    "&gt;" to ">",
-    "&quot;" to "\"",
-    "&#39;" to "'",
-    "&apos;" to "'",
-    "&nbsp;" to " ",
-    "&mdash;" to "—",
-    "&ndash;" to "–",
-    "&hellip;" to "…",
+private val NAMED_ENTITIES = mapOf(
+    "amp" to "&",
+    "lt" to "<",
+    "gt" to ">",
+    "quot" to "\"",
+    "apos" to "'",
+    "nbsp" to " ",
+    "mdash" to "—",
+    "ndash" to "–",
+    "hellip" to "…",
+    // Curly quotes - very common in translated web novels, and their absence here was showing
+    // up as literal "&ldquo;"/"&rdquo;" text mid-sentence in the reader.
+    "ldquo" to "“",
+    "rdquo" to "”",
+    "lsquo" to "‘",
+    "rsquo" to "’",
+    "laquo" to "«",
+    "raquo" to "»",
+    "bull" to "•",
+    "middot" to "·",
+    "deg" to "°",
+    "times" to "×",
+    "divide" to "÷",
+    "copy" to "©",
+    "reg" to "®",
+    "trade" to "™",
+    "prime" to "′",
+    "Prime" to "″",
+    "dagger" to "†",
+    "Dagger" to "‡",
+    "permil" to "‰",
+    "euro" to "€",
+    "pound" to "£",
+    "yen" to "¥",
+    "cent" to "¢",
+    "sect" to "§",
+    "para" to "¶",
+    "ensp" to " ",
+    "emsp" to " ",
+    "thinsp" to " ",
+    "zwj" to "‍",
+    "zwnj" to "‌",
+    "shy" to "­",
 )
 
+/** One entity occurrence: `&name;`, `&#123;`, or `&#xAb;`. */
+private val ENTITY_REGEX = Regex("&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);")
+
+/**
+ * Decodes HTML entities in a **single pass**, so an already-escaped entity survives intact:
+ * replacing `&amp;` before the others (as a naive per-entity `replace` loop does) turns
+ * `&amp;lt;` into a literal `<` instead of the `&lt;` text the source actually meant.
+ *
+ * Unknown named entities are left as-is rather than dropped - showing `&foo;` is less confusing
+ * than silently deleting text.
+ */
 private fun decodeHtmlEntities(text: String): String {
-    var result = text
-    HTML_ENTITIES.forEach { (entity, char) -> result = result.replace(entity, char) }
-    return result
+    if ('&' !in text) return text
+    return ENTITY_REGEX.replace(text) { match ->
+        val body = match.groupValues[1]
+        when {
+            body.startsWith("#x") || body.startsWith("#X") ->
+                body.drop(2).toIntOrNull(16)?.codePointString() ?: match.value
+            body.startsWith("#") ->
+                body.drop(1).toIntOrNull()?.codePointString() ?: match.value
+            else -> NAMED_ENTITIES[body] ?: match.value
+        }
+    }
 }
+
+private fun Int.codePointString(): String? =
+    if (this in 1..0x10FFFF) String(Character.toChars(this)) else null
 
 /**
  * Parses a paragraph's inline HTML (`<b>`/`<strong>`, `<i>`/`<em>`, `<u>`, `<br>`) into a real

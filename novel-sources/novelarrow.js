@@ -45,7 +45,7 @@ Register(JSON.stringify({
   name: "NovelArrow",
   lang: "en",
   baseUrl: "https://novelarrow.com",
-  version: "1.1.2",
+  version: "1.1.3",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelarrow.com",
   // Slugs scraped from the real site-wide genre nav (/genre/{slug} links on the homepage).
@@ -271,7 +271,19 @@ globalThis.source = {
     var data;
     try { data = JSON.parse(json); } catch (e) { return ""; }
     var info = data && data.item && data.item.chapterInfo;
-    return (info && info.chapter_content) || "";
+    if (!info) return "";
+
+    var body = info.chapter_content || "";
+
+    // Whether chapter_content carries its own title heading is inconsistent per novel (confirmed
+    // live: Shadow Slave's chapters open with "<h4>Chapter 1 Nightmare Begins</h4>", while other
+    // novels' start straight at "<p>"). Prepend it only when absent, so the reader always shows a
+    // chapter title like the other sources do and titled chapters don't end up with it twice.
+    if (info.chapter_name && !/^\s*<h[1-6][\s>]/i.test(body)) {
+      body = "<h4>" + info.chapter_name + "</h4>" + body;
+    }
+
+    return body;
   },
 
 };
