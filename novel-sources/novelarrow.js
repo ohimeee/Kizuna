@@ -32,15 +32,20 @@
 //   route family is real and already used in the wild - Kizuna's implementation below is its own,
 //   written against the JsNovelSource bridge functions, not a port of that file.
 // - Genre archive supports real, confirmed pagination (`?page=N`, 20/page, distinct results per
-//   page) and sort (`?sort=POPULAR` / `?sort=RATING` both confirmed to change the top result vs the
-//   default/unsorted list).
+//   page). Sort/language enum values below aren't guessed - pulled straight from the site's own
+//   client bundle (the archive toolbar's sort/language dropdown component, chunk
+//   `app/(site)/genre/[slug]/page-*.js`: `[{value:"LASTEST",label:"Last updated"},{value:"NEW",
+//   label:"Recently added"},{value:"ALL_TIME",label:"Top (most viewed)"},{value:"POPULAR",
+//   label:"Popular this week"},{value:"RATING",label:"Top rated"},{value:"CHAPTERS",label:"Most
+//   chapters"}]` and `[{value:"ALL",...},{value:"EN",...},{value:"CN",...}]`), then each value
+//   confirmed live to actually change the result set (not silently ignored/falling back).
 
 Register(JSON.stringify({
   id: "novelarrow",
   name: "NovelArrow",
   lang: "en",
   baseUrl: "https://novelarrow.com",
-  version: "1.0.0",
+  version: "1.1.0",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelarrow.com",
   // Slugs scraped from the real site-wide genre nav (/genre/{slug} links on the homepage).
@@ -109,9 +114,20 @@ Register(JSON.stringify({
       id: "sort",
       name: "Sort Results By",
       options: [
-        { label: "Latest", value: "LASTEST" },
-        { label: "Popular", value: "POPULAR" },
-        { label: "Rating", value: "RATING" },
+        { label: "Last updated", value: "LASTEST" },
+        { label: "Recently added", value: "NEW" },
+        { label: "Top (most viewed)", value: "ALL_TIME" },
+        { label: "Popular this week", value: "POPULAR" },
+        { label: "Top rated", value: "RATING" },
+        { label: "Most chapters", value: "CHAPTERS" },
+      ],
+    },
+    {
+      id: "language",
+      name: "Language",
+      options: [
+        { label: "English", value: "EN" },
+        { label: "Chinese", value: "CN" },
       ],
     },
   ],
@@ -171,14 +187,16 @@ globalThis.source = {
     return parseListing(Http.get(BASE_URL + "novels/latest?page=" + page, "{}"));
   },
 
-  // The app's filter sheet (genre/sort above) always calls searchNovels, never popularNovels/
-  // latestNovels directly - so genre/sort browsing (no keyword) is handled here too.
+  // The app's filter sheet (genre/sort/language above) always calls searchNovels, never
+  // popularNovels/latestNovels directly - so genre/sort/language browsing (no keyword) is handled
+  // here too.
   searchNovels: function (query, page, filtersJson) {
     var filters = JSON.parse(filtersJson || "{}");
 
     if (!query && filters.genre) {
       var url = BASE_URL + "genre/" + encodeURIComponent(filters.genre) + "?page=" + page;
       if (filters.sort) url += "&sort=" + filters.sort;
+      if (filters.language) url += "&language=" + filters.language;
       return parseListing(Http.get(url, "{}"));
     }
 
