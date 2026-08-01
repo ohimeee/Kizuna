@@ -11,6 +11,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -20,6 +23,7 @@ import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderTheme
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.flow.launchIn
@@ -90,6 +94,28 @@ class NovelReaderActivity : BaseActivity() {
             // visible independent of this without fighting over who controls the status bar.)
             LaunchedEffect(fullscreen, controlsVisible) {
                 setSystemBarsVisible(!fullscreen && controlsVisible)
+            }
+
+            // The two system bars sit on different backgrounds, so their icons are tinted
+            // independently:
+            //   - Status bar: the top app bar paints its chrome behind it (see the `windowInsets`
+            //     note in NovelReaderScreen) and the status bar only ever shows while that chrome
+            //     is up, so it follows the *app* theme's surface.
+            //   - Navigation bar: the reading page - and the footer, which shares the page color -
+            //     is what paints down there, so it follows the *reading* theme.
+            // Getting this wrong is what left the clock/battery/wifi white-on-white (and the status
+            // bar looking missing rather than hidden) on a light reading theme in a dark app theme.
+            val readerTheme by preferences.theme.collectAsState()
+            val pageBackground = if (readerTheme == NovelReaderTheme.FOLLOW_SYSTEM) {
+                MaterialTheme.colorScheme.background
+            } else {
+                Color(readerTheme.backgroundColor)
+            }
+            val lightChrome = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+            val lightPage = pageBackground.luminance() > 0.5f
+            LaunchedEffect(lightChrome, lightPage) {
+                windowInsetsController.isAppearanceLightStatusBars = lightChrome
+                windowInsetsController.isAppearanceLightNavigationBars = lightPage
             }
 
             NovelReaderScreen(

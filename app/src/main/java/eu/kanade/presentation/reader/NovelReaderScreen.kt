@@ -34,7 +34,11 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -47,7 +51,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -84,8 +92,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -94,11 +105,13 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -151,6 +164,32 @@ private val NunitoFontFamily = FontFamily(
     Font(R.font.nunito_italic, weight = FontWeight.Bold, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
 
+/** One in-chapter search hit: which paragraph, and the offset within that paragraph's text. */
+private data class NovelSearchMatch(val paragraphIndex: Int, val offset: Int)
+
+private const val SEARCH_DEBOUNCE_MS = 300L
+
+/**
+ * Below this length a query matches so much of a chapter that highlighting it is noise rather than
+ * navigation. Punctuation-only queries are exempt - searching for `"` or `—` is a legitimate thing
+ * to want and can't reach the threshold. Same rule LNReader's reader searchbar uses.
+ */
+private const val MIN_SEARCH_LENGTH = 3
+
+/** Ceiling on collected hits, so a pathological query can't build a huge list on the UI thread. */
+private const val MAX_SEARCH_MATCHES = 500
+
+private val SEARCH_SPECIAL_CHARACTER_REGEX = Regex("""[^\p{L}\p{N}\s]""")
+
+private fun isSearchable(query: String): Boolean =
+    query.length >= MIN_SEARCH_LENGTH || (query.isNotEmpty() && SEARCH_SPECIAL_CHARACTER_REGEX.containsMatchIn(query))
+
+/**
+ * Reader chrome (top bar, search bar, seekbar pill) follows the **app's** light/dark theme, not the
+ * reading theme - same as LNReader, where a dark app theme keeps dark chrome even over a light
+ * reading page. Deriving it from the page instead was tried and reverted: it's the app theme that
+ * owns this, and the reading theme only owns the page itself.
+ */
 @Composable
 private fun chromeBackgroundColor() = MaterialTheme.colorScheme
     .surfaceColorAtElevation(3.dp)
@@ -201,6 +240,56 @@ fun NovelReaderScreen(
     }
     val scope = rememberCoroutineScope()
     val chromeBackground = chromeBackgroundColor()
+    // Chrome is app-themed (see chromeBackgroundColor), so its content is too - using the reading
+    // theme's text color here would render invisible whenever the two themes disagree.
+    val chromeContentColor = MaterialTheme.colorScheme.onSurface
+
+    // --- In-chapter text search (mirrors LNReader's reader searchbar) ---
+    var searchVisible by remember(state.chapter?.id) { mutableStateOf(false) }
+    var searchQuery by remember(state.chapter?.id) { mutableStateOf("") }
+    var debouncedQuery by remember(state.chapter?.id) { mutableStateOf("") }
+    var currentMatch by remember(state.chapter?.id) { mutableIntStateOf(0) }
+
+    LaunchedEffect(searchQuery) {
+        delay(SEARCH_DEBOUNCE_MS)
+        debouncedQuery = searchQuery.trim().takeIf { isSearchable(it) }.orEmpty()
+        currentMatch = 0
+    }
+
+    // Search the *rendered* text, not the source HTML - a match offset taken from raw markup
+    // wouldn't line up with what parseInlineHtml actually draws. `lazy` matters here: this parses
+    // every paragraph in the chapter, and most reading sessions never open search at all, so it
+    // must not run as part of simply opening a chapter. Cached per chapter once it does run, so
+    // typing doesn't re-parse on every keystroke.
+    val plainParagraphs = remember(state.paragraphs) {
+        lazy { state.paragraphs.map { parseInlineHtml(it).text } }
+    }
+    val matches = remember(plainParagraphs, debouncedQuery) {
+        if (debouncedQuery.isEmpty()) {
+            emptyList()
+        } else {
+            buildList {
+                for ((paragraphIndex, text) in plainParagraphs.value.withIndex()) {
+                    var offset = text.indexOf(debouncedQuery, ignoreCase = true)
+                    while (offset >= 0) {
+                        add(NovelSearchMatch(paragraphIndex, offset))
+                        if (size >= MAX_SEARCH_MATCHES) break
+                        offset = text.indexOf(debouncedQuery, offset + 1, ignoreCase = true)
+                    }
+                    if (size >= MAX_SEARCH_MATCHES) break
+                }
+            }
+        }
+    }
+    val activeMatch = matches.getOrNull(currentMatch)
+
+    // Offset the jump by roughly the search bar's height: a bare scrollToItem parks the matched
+    // paragraph flush against the top of the viewport, which is exactly where the search bar
+    // overlay sits - so the hit you just navigated to ends up hidden underneath it.
+    val searchScrollOffsetPx = with(LocalDensity.current) { 96.dp.roundToPx() }
+    LaunchedEffect(activeMatch) {
+        activeMatch?.let { listState.scrollToItem(it.paragraphIndex, -searchScrollOffsetPx) }
+    }
 
     Box(
         modifier = Modifier
@@ -253,6 +342,9 @@ fun NovelReaderScreen(
                         onProgress = onProgress,
                         onPrevChapter = onPrevChapter,
                         onNextChapter = onNextChapter,
+                        searchQuery = debouncedQuery,
+                        activeMatchParagraph = activeMatch?.paragraphIndex ?: -1,
+                        activeMatchOffset = activeMatch?.offset ?: -1,
                     )
                 }
             }
@@ -265,8 +357,35 @@ fun NovelReaderScreen(
                 enter = slideInVertically(chromeSlideAnimationSpec) { -it } + fadeIn(chromeFadeAnimationSpec),
                 exit = slideOutVertically(chromeSlideAnimationSpec) { -it } + fadeOut(chromeFadeAnimationSpec),
             ) {
+                if (searchVisible) {
+                    NovelReaderSearchBar(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        // 1-based for display; 0/0 while a query is too short to have run yet.
+                        currentMatch = if (matches.isEmpty()) 0 else currentMatch + 1,
+                        totalMatches = matches.size,
+                        isTruncated = matches.size >= MAX_SEARCH_MATCHES,
+                        showMinLengthHint = searchQuery.isNotBlank() && !isSearchable(searchQuery.trim()),
+                        onPrev = { if (matches.isNotEmpty()) currentMatch = (currentMatch - 1 + matches.size) % matches.size },
+                        onNext = { if (matches.isNotEmpty()) currentMatch = (currentMatch + 1) % matches.size },
+                        onClose = {
+                            searchVisible = false
+                            searchQuery = ""
+                            debouncedQuery = ""
+                            currentMatch = 0
+                        },
+                        containerColor = chromeBackground,
+                        contentColor = chromeContentColor,
+                    )
+                } else {
                 TopAppBar(
-                    modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
+                    // `windowInsets`, not an outer windowInsetsPadding modifier: this pads the
+                    // bar's *content* below the status bar while its container still paints behind
+                    // it. Padding the whole bar instead left the reading page showing through the
+                    // status bar strip, which is what made the system icons white-on-white on a
+                    // light reading theme. Matches LNReader, where the status bar sits on the
+                    // appbar's own chrome color.
+                    windowInsets = WindowInsets.statusBars,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = chromeBackground),
                     title = {
                         // Chapter name over novel name, matching LNReader's title/subtitle top bar
@@ -295,6 +414,9 @@ fun NovelReaderScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { searchVisible = true }) {
+                            Icon(Icons.Filled.Search, contentDescription = "Search in chapter")
+                        }
                         if (onOpenInWebView != null) {
                             IconButton(onClick = onOpenInWebView) {
                                 Icon(Icons.Filled.Public, contentDescription = null)
@@ -305,6 +427,7 @@ fun NovelReaderScreen(
                         }
                     },
                 )
+                }
             }
 
             val progressPercent = readingProgressPercent(listState, state.paragraphs.size)
@@ -325,6 +448,7 @@ fun NovelReaderScreen(
                             .padding(vertical = MaterialTheme.padding.medium, horizontal = MaterialTheme.padding.small),
                     ) {
                         NovelVerticalSeekbar(
+                            textColor = chromeContentColor,
                             // Drive the seekbar off the same percent the status bar shows, not the
                             // raw item index - a short trailing paragraph/footer can mean the list
                             // never actually scrolls its firstVisibleItemIndex up to the last
@@ -343,19 +467,19 @@ fun NovelReaderScreen(
                 Spacer(Modifier.weight(1f))
             }
 
-            // The footer is part of the hideable chrome, same as the top bar and seekbar - it only
-            // shows when its preference is on *and* the chrome is up. It used to stay pinned
-            // whenever the preference alone was on, which meant a permanent strip of numbers
-            // competing with the page on every single screen of reading.
+            // The footer is NOT part of the hideable chrome - it stays up whenever its own
+            // preference is on, tap-to-hide or not, so progress/battery/time can be glanced at
+            // without bringing the rest of the chrome back. Because it's always visible it needs
+            // the solid page-colored backdrop below, or scrolling body text runs into the numbers.
             AnimatedVisibility(
-                visible = showBatteryAndTime && showControls,
+                visible = showBatteryAndTime,
                 enter = slideInVertically(chromeSlideAnimationSpec) { it } + fadeIn(chromeFadeAnimationSpec),
                 exit = slideOutVertically(chromeSlideAnimationSpec) { it } + fadeOut(chromeFadeAnimationSpec),
             ) {
                 NovelReaderStatusBar(
                     progressPercent = progressPercent,
                     textColor = textColor,
-                    backgroundColor = chromeBackground,
+                    backgroundColor = backgroundColor,
                 )
             }
         }
@@ -388,9 +512,9 @@ private fun readingProgressPercent(listState: LazyListState, total: Int): Int {
 
 /**
  * Three plain segments in a row - battery level, reading progress, clock. Shown together as one
- * unit, gated by `preferences.showBatteryAndTime` **and** the tap-to-hide chrome state, so it
- * appears and disappears alongside the top bar and seekbar rather than sitting on the page
- * permanently. Clock uses the device's own 12h/24h system setting
+ * unit, gated only by `preferences.showBatteryAndTime` - never tied to tap-to-hide, so the reader
+ * can glance at progress/battery/time without needing to bring the rest of the chrome up. Clock
+ * uses the device's own 12h/24h system setting
  * (`android.text.format.DateFormat.getTimeFormat`), not a hardcoded format.
  */
 @Composable
@@ -416,10 +540,14 @@ private fun NovelReaderStatusBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            // Translucent chrome backdrop, same as the top bar/seekbar. This used to be the solid
-            // page background because the footer was permanently visible and text would otherwise
-            // collide with the numbers; now that it hides with the rest of the chrome it can match
-            // the other bars instead of carving out an opaque band of the page.
+            // Solid *page* background, not the translucent `chromeBackground` the top bar and
+            // seekbar use. Those two get their content color from the app's Material theme, but
+            // this footer's [textColor] comes from the reading theme - pairing reading-theme text
+            // with app-theme chrome renders dark-on-dark (or light-on-light) the moment the two
+            // themes disagree, e.g. a white reading page inside a dark app theme. Keeping both
+            // colors from the same reading theme guarantees contrast, and since this footer hides
+            // with the rest of the chrome now, a page-colored backdrop reads as seamless rather
+            // than as an opaque band carved out of the page.
             .background(backgroundColor)
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
@@ -454,6 +582,7 @@ private fun NovelReaderStatusBar(
 private fun NovelVerticalSeekbar(
     progressPercent: Int,
     backgroundColor: Color,
+    textColor: Color,
     onProgressChange: (Int) -> Unit,
     onInteract: () -> Unit,
     modifier: Modifier = Modifier,
@@ -473,8 +602,11 @@ private fun NovelVerticalSeekbar(
             .background(backgroundColor, RoundedCornerShape(percent = 50))
             .padding(vertical = MaterialTheme.padding.small),
     ) {
-        // No percentage label here on purpose - the footer status bar already shows the exact same
-        // number, and having it in both places at once was pure duplicated chrome.
+        Text(
+            text = "$progressPercent%",
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor,
+        )
         VerticalSlider(
             state = state,
             interactionSource = interactionSource,
@@ -494,6 +626,9 @@ private fun NovelReaderContent(
     onProgress: (paragraphIndex: Int, isAtEnd: Boolean) -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    searchQuery: String = "",
+    activeMatchParagraph: Int = -1,
+    activeMatchOffset: Int = -1,
 ) {
     val paragraphs = state.paragraphs
     val fontSize by preferences.fontSize.collectAsState()
@@ -554,6 +689,13 @@ private fun NovelReaderContent(
     val nestedScrollConnection = remember(state.hasPrevChapter, listState) {
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                // Only a real finger drag may pull to the previous chapter. Fling momentum arrives
+                // here too (as NestedScrollSource.SideEffect), so a hard swipe up from the middle
+                // or bottom of a chapter used to coast into the top boundary and spend its leftover
+                // velocity on this gesture - jumping to the previous chapter when the reader was
+                // just scrolling back to re-read something.
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+
                 // Confirmed via live logcat trace (see docs/novel-reader-ui-notes.md): at the true
                 // top boundary, a continued downward pull produces POSITIVE available.y (~17-33 per
                 // frame) - a prior "fix" flipped this check to reject positive values, which broke
@@ -626,8 +768,18 @@ private fun NovelReaderContent(
                     val base = parseInlineHtml(paragraph)
                     if (bionicReading) applyBionicReading(base) else base
                 }
+                // Only this paragraph's own hit counts as "active" - every other match in the
+                // chapter gets the plain wash.
+                val activeOffset = if (index == activeMatchParagraph) activeMatchOffset else null
+                val displayed = remember(annotated, searchQuery, activeOffset) {
+                    if (searchQuery.isEmpty()) {
+                        annotated
+                    } else {
+                        highlightSearchMatches(annotated, searchQuery, activeOffset)
+                    }
+                }
                 Text(
-                    text = annotated,
+                    text = displayed,
                     color = textColor,
                     fontSize = fontSize.sp,
                     fontWeight = if (isTitle) FontWeight.Bold else null,
@@ -661,6 +813,116 @@ private fun NovelReaderContent(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * In-chapter find bar, modelled on LNReader's reader searchbar: a text field with a `current/total`
+ * counter and up/down chevrons that step through hits. Replaces the top bar while open rather than
+ * stacking below it, so the reading area doesn't lose more height than it has to.
+ */
+@Composable
+private fun NovelReaderSearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    currentMatch: Int,
+    totalMatches: Int,
+    isTruncated: Boolean,
+    showMinLengthHint: Boolean,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit,
+    containerColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    // background before windowInsetsPadding so the chrome color paints behind the status bar,
+    // same as TopAppBar's own `windowInsets` handling - see the note at its call site.
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(containerColor)
+            .windowInsetsPadding(WindowInsets.statusBars),
+    ) {
+        val mutedContentColor = contentColor.copy(alpha = 0.6f)
+        Row(
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Close search",
+                    tint = contentColor,
+                )
+            }
+
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = contentColor),
+                cursorBrush = SolidColor(contentColor),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
+                modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                decorationBox = { innerTextField ->
+                    if (query.isEmpty()) {
+                        Text(
+                            text = "Search in chapter",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = mutedContentColor,
+                        )
+                    }
+                    innerTextField()
+                },
+            )
+
+            if (query.isNotBlank() && !showMinLengthHint) {
+                Text(
+                    text = "$currentMatch/$totalMatches" + if (isTruncated) "+" else "",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = mutedContentColor,
+                    modifier = Modifier.padding(horizontal = MaterialTheme.padding.small),
+                )
+            }
+
+            IconButton(onClick = onPrev, enabled = totalMatches > 0) {
+                Icon(
+                    Icons.Filled.KeyboardArrowUp,
+                    contentDescription = "Previous match",
+                    tint = if (totalMatches > 0) contentColor else mutedContentColor,
+                )
+            }
+            IconButton(onClick = onNext, enabled = totalMatches > 0) {
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "Next match",
+                    tint = if (totalMatches > 0) contentColor else mutedContentColor,
+                )
+            }
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = contentColor)
+                }
+            }
+        }
+
+        if (showMinLengthHint) {
+            Text(
+                text = "Type at least $MIN_SEARCH_LENGTH characters",
+                style = MaterialTheme.typography.labelSmall,
+                color = mutedContentColor,
+                modifier = Modifier.padding(
+                    start = MaterialTheme.padding.medium,
+                    bottom = MaterialTheme.padding.small,
+                ),
+            )
         }
     }
 }

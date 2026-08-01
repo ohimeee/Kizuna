@@ -1,5 +1,6 @@
 package eu.kanade.presentation.reader
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -134,6 +135,43 @@ fun parseInlineHtml(html: String): AnnotatedString = buildAnnotatedString {
 
     if (cursor < html.length) {
         append(decodeHtmlEntities(html.substring(cursor)))
+    }
+}
+
+/** Translucent wash over every match, so they're findable while skimming without shouting. */
+private val SEARCH_MATCH_COLOR = Color(0x66FFEB3B)
+
+/** The one match the up/down chevrons are currently parked on - solid, with forced dark text so
+ * it stays legible on light and dark reading themes alike. */
+private val SEARCH_ACTIVE_MATCH_COLOR = Color(0xFFFFC107)
+private val SEARCH_ACTIVE_MATCH_TEXT_COLOR = Color(0xFF1A1A1A)
+
+/**
+ * Overlays in-chapter search highlights on an already-parsed paragraph. Runs against [base]'s
+ * *rendered* text rather than the source HTML on purpose - offsets taken from the raw markup would
+ * be thrown off by every tag and entity that parsing collapses away.
+ *
+ * [activeMatchStart] is the offset (within this paragraph) of the currently-selected match, or
+ * null when the selected match lives in some other paragraph.
+ */
+fun highlightSearchMatches(
+    base: AnnotatedString,
+    query: String,
+    activeMatchStart: Int? = null,
+): AnnotatedString {
+    if (query.isEmpty()) return base
+    return buildAnnotatedString {
+        append(base)
+        var index = base.text.indexOf(query, ignoreCase = true)
+        while (index >= 0) {
+            val style = if (index == activeMatchStart) {
+                SpanStyle(background = SEARCH_ACTIVE_MATCH_COLOR, color = SEARCH_ACTIVE_MATCH_TEXT_COLOR)
+            } else {
+                SpanStyle(background = SEARCH_MATCH_COLOR)
+            }
+            addStyle(style, index, index + query.length)
+            index = base.text.indexOf(query, index + 1, ignoreCase = true)
+        }
     }
 }
 

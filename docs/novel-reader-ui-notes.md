@@ -72,6 +72,16 @@ All backed by `NovelReaderPreferences.kt`.
 - Actions: open-in-WebView (only when the source provides a URL) and settings. Back arrow as the
   navigation icon.
 
+## System bar icon tint
+
+`NovelReaderActivity` sets `isAppearanceLightStatusBars`/`isAppearanceLightNavigationBars` from the
+**reading theme's** background luminance (`> 0.5f` → light page → dark icons), not from the app
+theme. The reader paints its page color edge-to-edge, including behind the status bar, so a light
+reading theme (LIGHT/SEPIA/MINT) inside a dark app theme previously rendered the system clock/
+battery/wifi icons white-on-white — the status bar read as missing/broken rather than hidden.
+Confirmed by pixel-sampling a screenshot: the strip behind the status bar was already `#FFFFFF`
+(the page), so the bar was showing correctly all along and only its icons were invisible.
+
 ## Chrome show/hide
 
 - Tapping the reading content toggles all chrome (top bar, seekbar, status bar) — same as Mihon's
@@ -107,17 +117,21 @@ All backed by `NovelReaderPreferences.kt`.
   request — it's confusing to have one footer with two different visibility rules for its pieces.
   All 3 segments render together or not at all; turning "Battery & time" off hides the whole
   footer. Polls `BatteryManager`/clock itself inside `NovelReaderStatusBar`.
-  - **The footer is part of the hideable chrome** — its `AnimatedVisibility` is keyed on
-    `showBatteryAndTime && showControls`, so it appears/disappears with the top bar and seekbar.
-    **This reverses an earlier decision** (2026-08-01) where it was keyed on `showBatteryAndTime`
-    alone and stayed pinned even while the rest of the chrome was tap-hidden. That version meant a
-    permanent strip of numbers on every screen of reading, and it needed an opaque page-colored
-    backdrop to stop body text colliding with it — which carved a solid band out of the page.
-    Changed after comparing side-by-side against LNReader's reading mode, which draws no
-    always-on footer widget at all. If you're reinstating the always-visible behavior, the opaque
-    backdrop has to come back with it.
-  - Backdrop is now the same translucent `chromeBackground` the top bar and seekbar use, not the
-    solid reading-theme page color.
+  - **The footer is NOT part of the hideable chrome** — its `AnimatedVisibility` is keyed on
+    `showBatteryAndTime` alone, so it stays up even while the top bar and seekbar are tap-hidden.
+    Turning the preference off is the only way to hide it.
+    - Briefly changed to `showBatteryAndTime && showControls` on 2026-08-01 (after an LNReader
+      comparison — LNReader draws no always-on footer widget) and **reverted the same day on
+      explicit user request**. The always-visible behavior is deliberate; don't "clean it up"
+      again. It's the reason the opaque page-colored backdrop below is required.
+  - **Backdrop stays the solid reading-theme page color** (`backgroundColor`), *not* the
+    translucent `chromeBackground` the top bar and seekbar use. Switching it to `chromeBackground`
+    was tried and reverted the same day: the top bar/seekbar take their content color from the
+    app's Material theme, but this footer's text uses the *reading* theme's `textColor`, so the
+    two disagreeing (a white reading page inside a dark app theme, the default here) rendered the
+    numbers dark-on-dark and essentially invisible. Both colors must come from the same reading
+    theme. Page-colored also reads as seamless now that the footer hides on tap, so there's no
+    "opaque band" cost to it anymore.
   - Clock uses the **device's own 12h/24h system format**
     (`android.text.format.DateFormat.getTimeFormat(context)`), not a hardcoded `SimpleDateFormat`
     pattern — matches whatever the user has their phone set to instead of always showing 24h time.
@@ -151,9 +165,10 @@ All backed by `NovelReaderPreferences.kt`.
   by one source of truth.
 - Interacting with the seekbar (dragging) must force `showControls = true` — seeking must never
   cause the chrome (including the battery/time footer) to disappear mid-interaction.
-- **No percentage label on the seekbar.** The footer status bar already shows the exact same
-  `readingProgressPercent()` value, so having both rendered the same number twice on screen at
-  once. Removed 2026-08-01; don't add it back without also removing it from the footer.
+- **The seekbar keeps its percentage label** above the rail. Yes, this is the same
+  `readingProgressPercent()` value the footer also shows — the duplication is intentional and was
+  asked for. Removed on 2026-08-01 as "duplicated chrome" and **reverted the same day on explicit
+  user request**; leave it alone.
 
 ## Chapter switching
 
@@ -166,6 +181,13 @@ All backed by `NovelReaderPreferences.kt`.
      limit **is** the confirmation, no release-to-confirm step. Hint text fades in while pulling
      ("Pull down for previous chapter" → "Release to go to previous chapter" once past the soft
      limit).
+     - **Only `NestedScrollSource.UserInput` counts** — the connection must ignore every other
+       source. Fling momentum is delivered to `onPostScroll` exactly like a drag is, so before this
+       check a hard swipe up from the middle or bottom of a chapter would coast all the way into
+       the top boundary and spend its remaining velocity on the pull gesture, navigating to the
+       previous chapter when the reader only wanted to scroll back and re-read something. Reported
+       and fixed 2026-08-01. Don't drop this check: the gesture is meant to require a deliberate,
+       finger-on-screen pull, and momentum can't express intent.
      - Implemented via `NestedScrollConnection.onPostScroll` on the `LazyColumn`. **Known subtle
        bug already hit once:** Compose's scroll-delta sign convention is positive = advance/see
        later content, negative = go back/see earlier content. A downward pull at the top (wanting
