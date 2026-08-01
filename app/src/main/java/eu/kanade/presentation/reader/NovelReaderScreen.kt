@@ -269,11 +269,25 @@ fun NovelReaderScreen(
                     modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = chromeBackground),
                     title = {
-                        Text(
-                            text = state.chapter?.name.orEmpty(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        // Chapter name over novel name, matching LNReader's title/subtitle top bar
+                        // - the chapter alone left no indication of which novel was being read.
+                        Column {
+                            Text(
+                                text = state.chapter?.name.orEmpty(),
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            state.mangaTitle?.takeIf { it.isNotBlank() }?.let { novelTitle ->
+                                Text(
+                                    text = novelTitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
@@ -329,17 +343,19 @@ fun NovelReaderScreen(
                 Spacer(Modifier.weight(1f))
             }
 
-            // The footer (progress/battery/time) isn't part of the hideable chrome - it stays up
-            // whenever its own preference is on, tap-to-hide or not.
+            // The footer is part of the hideable chrome, same as the top bar and seekbar - it only
+            // shows when its preference is on *and* the chrome is up. It used to stay pinned
+            // whenever the preference alone was on, which meant a permanent strip of numbers
+            // competing with the page on every single screen of reading.
             AnimatedVisibility(
-                visible = showBatteryAndTime,
+                visible = showBatteryAndTime && showControls,
                 enter = slideInVertically(chromeSlideAnimationSpec) { it } + fadeIn(chromeFadeAnimationSpec),
                 exit = slideOutVertically(chromeSlideAnimationSpec) { it } + fadeOut(chromeFadeAnimationSpec),
             ) {
                 NovelReaderStatusBar(
                     progressPercent = progressPercent,
                     textColor = textColor,
-                    backgroundColor = backgroundColor,
+                    backgroundColor = chromeBackground,
                 )
             }
         }
@@ -371,11 +387,10 @@ private fun readingProgressPercent(listState: LazyListState, total: Int): Int {
 }
 
 /**
- * Three plain segments in a row - reading progress, battery level, clock - matching LNReader's own
- * footer format exactly (no pill/box background, just text sitting directly on the page). Always
- * shown together as one unit, gated only by `preferences.showBatteryAndTime` - never tied to
- * tap-to-hide, so the reader can glance at progress/battery/time without needing to bring the rest
- * of the chrome up. Clock uses the device's own 12h/24h system setting
+ * Three plain segments in a row - battery level, reading progress, clock. Shown together as one
+ * unit, gated by `preferences.showBatteryAndTime` **and** the tap-to-hide chrome state, so it
+ * appears and disappears alongside the top bar and seekbar rather than sitting on the page
+ * permanently. Clock uses the device's own 12h/24h system setting
  * (`android.text.format.DateFormat.getTimeFormat`), not a hardcoded format.
  */
 @Composable
@@ -401,9 +416,10 @@ private fun NovelReaderStatusBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            // Solid page-background backdrop - this footer is always visible (not part of the
-            // hideable chrome), so without an opaque backing the last line of scrolling text
-            // collides/overlaps directly with the numbers instead of stopping short of them.
+            // Translucent chrome backdrop, same as the top bar/seekbar. This used to be the solid
+            // page background because the footer was permanently visible and text would otherwise
+            // collide with the numbers; now that it hides with the rest of the chrome it can match
+            // the other bars instead of carving out an opaque band of the page.
             .background(backgroundColor)
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
@@ -457,7 +473,8 @@ private fun NovelVerticalSeekbar(
             .background(backgroundColor, RoundedCornerShape(percent = 50))
             .padding(vertical = MaterialTheme.padding.small),
     ) {
-        Text(text = "$progressPercent%", style = MaterialTheme.typography.labelSmall)
+        // No percentage label here on purpose - the footer status bar already shows the exact same
+        // number, and having it in both places at once was pure duplicated chrome.
         VerticalSlider(
             state = state,
             interactionSource = interactionSource,

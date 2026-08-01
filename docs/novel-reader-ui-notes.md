@@ -63,6 +63,15 @@ said "no dont build TTS" when asked; don't add a TTS tab.
 
 All backed by `NovelReaderPreferences.kt`.
 
+## Top bar
+
+- Two-line title, matching LNReader's reader appbar: **chapter name** (`titleMedium`) on top,
+  **novel title** (`bodySmall`, `onSurfaceVariant`) underneath as a subtitle. The novel title comes
+  from `NovelReaderViewModel.State.mangaTitle`, set once in `loadManga()`. Before this the bar
+  showed only the chapter name, which left no indication of which novel was open.
+- Actions: open-in-WebView (only when the source provides a URL) and settings. Back arrow as the
+  navigation icon.
+
 ## Chrome show/hide
 
 - Tapping the reading content toggles all chrome (top bar, seekbar, status bar) — same as Mihon's
@@ -94,16 +103,21 @@ All backed by `NovelReaderPreferences.kt`.
   top didn't disappear." Reverted.
 - **The footer (`NovelReaderStatusBar`: reading progress / battery / clock) is a single unit with
   a single governing preference — `showBatteryAndTime`.** There used to be a second, separate
-  "Reading progress" toggle that independently gated the progress segment's visibility and also
-  tied it to `showControls` (tap-to-hide) while battery/clock stayed independent. Removed on
+  "Reading progress" toggle that independently gated the progress segment's visibility. Removed on
   request — it's confusing to have one footer with two different visibility rules for its pieces.
-  Current behavior: all 3 segments render together, unconditionally, whenever
-  `preferences.showBatteryAndTime` is on — **including while the rest of the chrome is
-  tap-hidden** (the footer's `AnimatedVisibility` is keyed on `showBatteryAndTime` alone, not
-  `showControls`). Turning the single "Battery & time" setting off hides the whole footer, all 3
-  segments together. Polls `BatteryManager`/clock itself inside `NovelReaderStatusBar`,
-  **outside** the tap-to-hide chrome tree entirely — no coordination with
-  `NovelReaderActivity`'s system-bar calls needed.
+  All 3 segments render together or not at all; turning "Battery & time" off hides the whole
+  footer. Polls `BatteryManager`/clock itself inside `NovelReaderStatusBar`.
+  - **The footer is part of the hideable chrome** — its `AnimatedVisibility` is keyed on
+    `showBatteryAndTime && showControls`, so it appears/disappears with the top bar and seekbar.
+    **This reverses an earlier decision** (2026-08-01) where it was keyed on `showBatteryAndTime`
+    alone and stayed pinned even while the rest of the chrome was tap-hidden. That version meant a
+    permanent strip of numbers on every screen of reading, and it needed an opaque page-colored
+    backdrop to stop body text colliding with it — which carved a solid band out of the page.
+    Changed after comparing side-by-side against LNReader's reading mode, which draws no
+    always-on footer widget at all. If you're reinstating the always-visible behavior, the opaque
+    backdrop has to come back with it.
+  - Backdrop is now the same translucent `chromeBackground` the top bar and seekbar use, not the
+    solid reading-theme page color.
   - Clock uses the **device's own 12h/24h system format**
     (`android.text.format.DateFormat.getTimeFormat(context)`), not a hardcoded `SimpleDateFormat`
     pattern — matches whatever the user has their phone set to instead of always showing 24h time.
@@ -136,8 +150,10 @@ All backed by `NovelReaderPreferences.kt`.
   visually reaches 100% even when the reader is actually at the bottom. Keep both numbers backed
   by one source of truth.
 - Interacting with the seekbar (dragging) must force `showControls = true` — seeking must never
-  cause the chrome (including the persistent battery/time-gated status bar) to disappear
-  mid-interaction.
+  cause the chrome (including the battery/time footer) to disappear mid-interaction.
+- **No percentage label on the seekbar.** The footer status bar already shows the exact same
+  `readingProgressPercent()` value, so having both rendered the same number twice on screen at
+  once. Removed 2026-08-01; don't add it back without also removing it from the footer.
 
 ## Chapter switching
 

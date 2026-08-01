@@ -96,6 +96,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
         return try {
             val manga = getManga.await(mangaId) ?: error("Manga not found")
             this.manga = manga
+            mutableState.update { it.copy(mangaTitle = manga.title) }
 
             val source = sourceManager.get(manga.source) as? NovelSource
                 ?: error("Source ${manga.source} is not a novel source")
@@ -257,6 +258,8 @@ class NovelReaderViewModel @JvmOverloads constructor(
     @Immutable
     data class State(
         val isLoading: Boolean = true,
+        /** Novel title, shown as the reader top bar's subtitle under the chapter name. */
+        val mangaTitle: String? = null,
         val chapter: Chapter? = null,
         val paragraphs: List<String> = emptyList(),
         val initialParagraphIndex: Int = 0,
