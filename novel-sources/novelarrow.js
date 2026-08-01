@@ -45,7 +45,7 @@ Register(JSON.stringify({
   name: "NovelArrow",
   lang: "en",
   baseUrl: "https://novelarrow.com",
-  version: "1.1.1",
+  version: "1.1.2",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelarrow.com",
   // Slugs scraped from the real site-wide genre nav (/genre/{slug} links on the homepage).
@@ -208,12 +208,22 @@ globalThis.source = {
       return parseListing(Http.get(url, "{}"));
     }
 
-    // Sort/language only take effect when paired with a genre - confirmed live that
-    // novels/latest and novels/popular both silently ignore ?sort=/?language= entirely (every
-    // sort value tested gave byte-identical top results), and the ranking page's Weekly/Monthly/
-    // All-Time toggle is client-fetched with no URL param equivalent. Without a genre, the best
-    // this source can honestly do is bucket into the two listings that are genuinely distinct.
-    var listPath = (filters.sort === "POPULAR" || filters.sort === "ALL_TIME") ? "novels/popular" : "novels/latest";
+    // ?sort=/?language= on novels/latest and novels/popular are silently ignored (confirmed live -
+    // every value tested gave byte-identical results), and the ranking page's Weekly/Monthly/
+    // All-Time toggle is client-fetched with no URL param equivalent. But novelarrow.com's own nav
+    // links to several *separately real* /novels/{category} pages - confirmed live each returns a
+    // genuinely distinct top result: /novels/latest, /novels/new, /novels/hot, /novels/popular
+    // (also /novels/complete, /novels/ongoing - status, not sort, not used here). No dedicated
+    // route exists for Top Rated/Most Chapters outside a genre archive (/novels/rating and similar
+    // guesses all hit the same generic empty "Novel List" fallback, not a real category) - those
+    // two still fall back to novels/latest without a genre picked.
+    var SORT_LISTING = {
+      LASTEST: "novels/latest",
+      NEW: "novels/new",
+      ALL_TIME: "novels/popular",
+      POPULAR: "novels/hot",
+    };
+    var listPath = SORT_LISTING[filters.sort] || "novels/latest";
     return parseListing(Http.get(BASE_URL + listPath + "?page=" + page, "{}"));
   },
 
