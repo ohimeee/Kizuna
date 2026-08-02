@@ -82,6 +82,18 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
     val baseUrl: String get() = metadata.baseUrl
     val version: String get() = metadata.version
 
+    /**
+     * Mirrors [eu.kanade.tachiyomi.source.online.HttpSource.toString]. This is **not** cosmetic:
+     * `DownloadProvider.getSourceDirName()` builds a chapter's on-disk download folder out of
+     * `source.toString()`. Without this override that fell through to Object's default
+     * `JsNovelSource@<identityHashCode>`, and [NovelSourceLoader] constructs a fresh instance on
+     * every load/rescan - so the folder name changed on each app restart. Chapters downloaded in
+     * one session became unfindable in the next: the reader silently fell back to the network,
+     * which hid the bug entirely while online and surfaced it as "downloaded chapter won't open"
+     * as soon as the device was offline.
+     */
+    override fun toString(): String = "$name (${lang.uppercase()})"
+
     override fun getHomeUrl(): String = baseUrl
 
     override fun getFilterList(): FilterList = FilterList(

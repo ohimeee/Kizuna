@@ -10,6 +10,7 @@ import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.NovelSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -128,9 +129,11 @@ class NovelReaderViewModel @JvmOverloads constructor(
                 ?: source.getChapterText(chapter.toSChapter())
             val index = chapterList.indexOfFirst { it.id == chapter.id }
 
-            val paragraphs = splitParagraphs(text)
+            val bodyParagraphs = splitParagraphs(text)
 
-            if (paragraphs.all { it.isBlank() }) {
+            // Emptiness must be judged on the body alone - withChapterTitle() below always
+            // prepends a non-blank title, which would otherwise mask a completely empty chapter.
+            if (bodyParagraphs.all { it.isBlank() }) {
                 // Not every "no content" case is a fetch failure - some sites (Webnovel in
                 // particular) paywall chapters past the first few free ones per novel, and the
                 // source plugin deliberately doesn't try to bypass that. The raw response can
@@ -152,6 +155,8 @@ class NovelReaderViewModel @JvmOverloads constructor(
                 return
             }
 
+            val paragraphs = withChapterTitle(chapter.name, bodyParagraphs)
+
             mutableState.update {
                 it.copy(
                     isLoading = false,
@@ -165,6 +170,15 @@ class NovelReaderViewModel @JvmOverloads constructor(
                     nextChapterName = chapterList.getOrNull(index + 1)?.name,
                 )
             }
+        } catch (e: CancellationException) {
+            // Must not be handled like a failure. CancellationException is an Exception, so the
+            // catch below used to swallow it and have the *cancelled* load write
+            // `isLoading = false` + an error into shared state - after the replacement load had
+            // already set `isLoading = true`. A dead job clobbering the live one's state that way
+            // leaves the reader showing a spurious error, or stuck, depending on which write lands
+            // last. Rethrowing keeps cancellation structured; the job that replaced this one owns
+            // the state from here.
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             mutableState.update {
@@ -234,11 +248,61 @@ class NovelReaderViewModel @JvmOverloads constructor(
         val target = chapterList.getOrNull(index + offset) ?: return
         val source = manga?.let { sourceManager.get(it.source) as? NovelSource } ?: return
 
+        // Advancing marks the chapter being left as read. The only way forward is the "Next: ..."
+        // pill rendered after the last paragraph, so getting here means the chapter was read to
+        // the end - but the scroll-driven progress collector is debounced, so tapping that pill
+        // promptly would otherwise navigate away before the end-of-chapter update ever landed and
+        // leave a fully-read chapter sitting at 80-90% and unread. Going backwards must not mark
+        // anything.
+        if (offset > 0 && !current.read) {
+            markChapterRead(current)
+        }
+
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             saveHistory()
             openChapter(source, target)
         }
+    }
+
+    private fun markChapterRead(chapter: Chapter) {
+        viewModelScope.launchNonCancellable {
+            updateChapter.await(ChapterUpdate(id = chapter.id, read = true))
+        }
+        updateTrackChapterRead(chapter)
+        mutableState.update {
+            if (it.chapter?.id == chapter.id) it.copy(chapter = chapter.copy(read = true)) else it
+        }
+    }
+
+    /**
+     * Makes paragraph 0 the chapter's own name, always.
+     *
+     * The reader renders paragraph 0 as the chapter title (bold, with extra trailing space), which
+     * previously assumed the source's own body text opened with a heading line. That assumption
+     * doesn't hold: some sources emit a heading, some don't, and the ones that do don't agree on
+     * the tag. When it was missing, the reader force-bolded whatever the first body paragraph
+     * happened to be - so a chapter would open with its first sentence styled as the title and no
+     * actual title anywhere.
+     *
+     * Using [Chapter.name] instead makes the title identical to what the chapter list shows,
+     * regardless of source. A leading body paragraph that just repeats that name (from a source
+     * that does emit its own heading) is dropped rather than shown twice.
+     */
+    private fun withChapterTitle(chapterName: String, body: List<String>): List<String> {
+        val duplicateTitle = body.firstOrNull()?.let { isSameTitle(it, chapterName) } == true
+        return listOf(chapterName) + if (duplicateTitle) body.drop(1) else body
+    }
+
+    /** Compares on letters/digits only, so punctuation and tag differences don't defeat the match. */
+    private fun isSameTitle(paragraph: String, chapterName: String): Boolean {
+        fun normalize(value: String) = value
+            .replace(Regex("<[^>]*>"), "")
+            .filter { it.isLetterOrDigit() }
+            .lowercase()
+
+        val normalizedParagraph = normalize(paragraph)
+        return normalizedParagraph.isNotEmpty() && normalizedParagraph == normalize(chapterName)
     }
 
     /**
@@ -248,8 +312,14 @@ class NovelReaderViewModel @JvmOverloads constructor(
      * stripped here.
      */
     private fun splitParagraphs(text: String): List<String> {
-        val stripBlockTags = Regex("(?i)</?p[^>]*>")
-        val split = text.split(Regex("(?i)</p>|<br\\s*/?>\\s*<br\\s*/?>|\n{2,}"))
+        // A closing heading tag ends a paragraph just like </p> does. Without it, a chapter body
+        // shaped like "<h4>Title</h4><p>First sentence...</p>" - which is what NovelArrow and
+        // Webnovel both produce, since they prepend the chapter name as a heading - collapsed the
+        // title and the opening sentence into a single chunk. That chunk is index 0, which the
+        // reader renders force-bolded as the chapter title, so the first sentence of every chapter
+        // got swallowed into the bold title line.
+        val stripBlockTags = Regex("(?i)</?(p|h[1-6])[^>]*>")
+        val split = text.split(Regex("(?i)</p>|</h[1-6]>|<br\\s*/?>\\s*<br\\s*/?>|\n{2,}"))
             .map { it.replace(stripBlockTags, "").trim() }
             .filter { it.isNotEmpty() }
         return split.ifEmpty { listOf(text.replace(stripBlockTags, "").trim()) }

@@ -658,12 +658,16 @@ private fun NovelReaderContent(
     }
     val paragraphSpacing = if (removeExtraSpacing) MaterialTheme.padding.extraSmall else MaterialTheme.padding.medium
 
+    // Observe the end-of-chapter state alongside the index, not just the index. Scrolling through
+    // the final screenful usually doesn't change firstVisibleItemIndex - the same item stays first
+    // while the remaining content scrolls up - so watching the index alone never re-emitted at the
+    // moment the chapter actually reached its end. isAtEnd was only ever sampled inside collect,
+    // which meant the chapter was never marked read and its progress froze short of 100%.
     LaunchedEffect(listState, paragraphs) {
-        snapshotFlow { listState.firstVisibleItemIndex }
+        snapshotFlow { listState.firstVisibleItemIndex to !listState.canScrollForward }
             .distinctUntilChanged()
             .debounce(500.milliseconds)
-            .collect { index ->
-                val isAtEnd = !listState.canScrollForward
+            .collect { (index, isAtEnd) ->
                 onProgress(index, isAtEnd)
             }
     }
