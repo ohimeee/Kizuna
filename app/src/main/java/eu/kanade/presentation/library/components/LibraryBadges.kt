@@ -1,6 +1,7 @@
 package eu.kanade.presentation.library.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Image
@@ -8,11 +9,14 @@ import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.tachiyomi.source.SourceContentType
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.presentation.core.components.Badge
+import tachiyomi.presentation.core.components.BadgeGroup
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -76,6 +80,25 @@ internal fun ContentTypeBadge(isNovel: Boolean) {
         color = MaterialTheme.colorScheme.tertiary,
         iconColor = MaterialTheme.colorScheme.onTertiary,
     )
+}
+
+/**
+ * [ContentTypeBadge] overlaid on the top-end corner of a bare cover, for the surfaces that render a
+ * cover directly instead of going through a library grid item (manga details, History rows).
+ *
+ * Those places used to show the type as an icon inline before the title, inside a
+ * `verticalAlignment = CenterVertically` Row - so once a title wrapped to two or three lines the
+ * icon drifted to the vertical middle of the block and read as a stray glyph floating beside the
+ * text. Putting it on the cover instead also matches where the Library grid already shows it, so
+ * the type lives in one consistent place app-wide and titles stay plain text.
+ *
+ * Expects to be placed inside a [androidx.compose.foundation.layout.Box] that also holds the cover.
+ */
+@Composable
+internal fun ContentTypeCoverBadge(isNovel: Boolean, modifier: Modifier = Modifier) {
+    BadgeGroup(modifier = modifier.padding(4.dp)) {
+        ContentTypeBadge(isNovel = isNovel)
+    }
 }
 
 @PreviewLightDark

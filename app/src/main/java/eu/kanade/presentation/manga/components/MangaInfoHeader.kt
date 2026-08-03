@@ -37,8 +37,6 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Schedule
@@ -90,6 +88,7 @@ import com.mikepenz.markdown.model.markdownAnnotatorConfig
 import com.mikepenz.markdown.utils.getUnescapedTextInNode
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.DropdownMenu
+import eu.kanade.presentation.library.components.ContentTypeCoverBadge
 import eu.kanade.presentation.library.components.rememberIsNovelSource
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.source.model.SManga
@@ -358,15 +357,21 @@ private fun MangaAndSourceTitlesLarge(
             .padding(start = 16.dp, top = appBarPadding + 16.dp, end = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        MangaCover.Book(
-            modifier = Modifier.fillMaxWidth(0.65f),
-            data = ImageRequest.Builder(LocalContext.current)
-                .data(manga)
-                .crossfade(true)
-                .build(),
-            contentDescription = stringResource(MR.strings.manga_cover),
-            onClick = onCoverClick,
-        )
+        Box(modifier = Modifier.fillMaxWidth(0.65f)) {
+            MangaCover.Book(
+                modifier = Modifier.fillMaxWidth(),
+                data = ImageRequest.Builder(LocalContext.current)
+                    .data(manga)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = stringResource(MR.strings.manga_cover),
+                onClick = onCoverClick,
+            )
+            ContentTypeCoverBadge(
+                isNovel = rememberIsNovelSource(manga.source),
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
         Spacer(modifier = Modifier.height(16.dp))
         MangaContentInfo(
             title = manga.title,
@@ -398,17 +403,24 @@ private fun MangaAndSourceTitlesSmall(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MangaCover.Book(
+        Box(
             modifier = Modifier
                 .sizeIn(maxWidth = 100.dp)
                 .align(Alignment.Top),
-            data = ImageRequest.Builder(LocalContext.current)
-                .data(manga)
-                .crossfade(true)
-                .build(),
-            contentDescription = stringResource(MR.strings.manga_cover),
-            onClick = onCoverClick,
-        )
+        ) {
+            MangaCover.Book(
+                data = ImageRequest.Builder(LocalContext.current)
+                    .data(manga)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = stringResource(MR.strings.manga_cover),
+                onClick = onCoverClick,
+            )
+            ContentTypeCoverBadge(
+                isNovel = rememberIsNovelSource(manga.source),
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
@@ -445,11 +457,8 @@ private fun ColumnScope.MangaContentInfo(
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = if (isNovel) Icons.Outlined.MenuBook else Icons.Outlined.Image,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-        )
+        // Content type is shown as a badge on the cover instead of inline here - see
+        // ContentTypeCoverBadge for why.
         Text(
             text = title.ifBlank { stringResource(MR.strings.unknown_title) },
             style = MaterialTheme.typography.titleLarge,

@@ -1,17 +1,15 @@
 package eu.kanade.presentation.history.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.library.components.ContentTypeCoverBadge
 import eu.kanade.presentation.library.components.rememberIsNovelSource
 import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
@@ -54,38 +53,32 @@ fun HistoryItem(
             .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MangaCover.Book(
-            modifier = Modifier.fillMaxHeight(),
-            data = history.coverData,
-            onClick = onClickCover,
-        )
+        Box(modifier = Modifier.fillMaxHeight()) {
+            MangaCover.Book(
+                modifier = Modifier.fillMaxHeight(),
+                data = history.coverData,
+                onClick = onClickCover,
+            )
+            ContentTypeCoverBadge(
+                isNovel = rememberIsNovelSource(history.coverData.sourceId),
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
         Column(
             modifier = Modifier
                 .weight(1f)
                 .padding(start = MaterialTheme.padding.medium, end = MaterialTheme.padding.small),
         ) {
             val textStyle = MaterialTheme.typography.bodyMedium
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = if (rememberIsNovelSource(history.coverData.sourceId)) {
-                        Icons.Outlined.MenuBook
-                    } else {
-                        Icons.Outlined.Image
-                    },
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .size(16.dp)
-                        .padding(end = 4.dp),
-                )
-                Text(
-                    text = history.title,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = textStyle,
-                )
-            }
+            // Content type is shown as a badge on the cover instead of inline here - see
+            // ContentTypeCoverBadge for why.
+            Text(
+                text = history.title,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = textStyle,
+            )
             val readAt = remember { history.readAt?.toTimestampString() ?: "" }
             Text(
                 text = if (history.chapterNumber > -1) {
