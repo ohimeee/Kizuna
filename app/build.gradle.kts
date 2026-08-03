@@ -32,8 +32,8 @@ android {
     defaultConfig {
         applicationId = "app.kizuna"
 
-        versionCode = 31
-        versionName = "0.24.0"
+        versionCode = 32
+        versionName = "0.25.0"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getLatestCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getLatestCommitSha()}\"")
