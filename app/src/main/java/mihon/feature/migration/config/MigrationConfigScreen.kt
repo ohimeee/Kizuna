@@ -45,6 +45,7 @@ import eu.kanade.presentation.browse.components.SourceIcon
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.migration.search.MigrateSearchScreen
 import eu.kanade.tachiyomi.util.system.LocaleHelper
@@ -343,7 +344,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                 .mapNotNull { it.toLongOrNull() }
             val sources = sourceManager.getAll()
                 .asSequence()
-                .filterIsInstance<HttpSource>()
+                .filter { it is HttpSource || it is NovelSource }
                 .filter { it.lang in languages }
                 .map {
                     val source = Source(
