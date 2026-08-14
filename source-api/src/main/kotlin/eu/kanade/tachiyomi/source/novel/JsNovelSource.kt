@@ -13,6 +13,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
@@ -45,9 +47,14 @@ import java.security.MessageDigest
  *      a non-default option for (a filter left on its default/"Any" option is omitted entirely, so
  *      `filtersJson` is `"{}"` for a plain search with no filters touched).
  *    - `novelDetails(url)` -> JSON `{ title?, cover?, author?, description?, genres?, status? }`
- *    - `chapterList(novelUrl)` -> JSON array of `{ name, url, chapterNumber?, dateUpload? }`, in
- *      natural reading order (chapter 1 first) - this gets reversed internally to match Mihon's
- *      own newest-first sourceOrder convention, so plugins never need to worry about it
+ *    - `chapterList(novelUrl)` -> JSON array of
+ *      `{ name, url, chapterNumber?, dateUpload?, locked? }`, in natural reading order (chapter 1
+ *      first) - this gets reversed internally to match Mihon's own newest-first sourceOrder
+ *      convention, so plugins never need to worry about it. `locked` (optional, defaults false)
+ *      flags a chapter the site paywalls behind a premium/VIP requirement - `chapterContent()` on
+ *      one of these is still expected to return whatever preview/teaser text the site serves
+ *      logged out, not an error; `locked` only drives a UI badge so the reader knows why a chapter
+ *      reads short.
  *    - `chapterContent(chapterUrl)` -> plain string (not JSON), the chapter body
  *
  * Two globals are available to the script for scraping: `Http.get(url, headersJson)` /
@@ -166,6 +173,9 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
                         url = dto.url
                         chapter_number = dto.chapterNumber
                         date_upload = dto.dateUpload
+                        if (dto.locked) {
+                            memo = buildJsonObject { put("kizuna.locked", JsonPrimitive(true)) }
+                        }
                     }
                 }
             } else {
@@ -427,6 +437,7 @@ private data class ChapterListItemDto(
     val url: String,
     val chapterNumber: Float = -1f,
     val dateUpload: Long = 0L,
+    val locked: Boolean = false,
 )
 
 /** Exposed into JS as `Http`. Methods block synchronously on the calling thread. */

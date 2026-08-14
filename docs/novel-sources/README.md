@@ -48,7 +48,7 @@ A plugin script must, at the top level:
    | `latestNovels(page)` | same shape as `popularNovels` |
    | `searchNovels(query, page, filtersJson)` | same shape as `popularNovels` |
    | `novelDetails(url)` | JSON `{ title?, cover?, author?, description?, genres?, status? }` |
-   | `chapterList(novelUrl)` | JSON array of `{ name, url, chapterNumber?, dateUpload? }`, chapter 1 first |
+   | `chapterList(novelUrl)` | JSON array of `{ name, url, chapterNumber?, dateUpload?, locked? }`, chapter 1 first — `locked` (default false) flags a paywalled/premium chapter for a UI badge; `chapterContent()` on one should still return whatever preview text the site serves logged out, not an error |
    | `chapterContent(chapterUrl)` | plain string (not JSON) — the chapter body |
 
 ### Search filters

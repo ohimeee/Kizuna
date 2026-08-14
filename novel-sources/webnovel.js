@@ -40,14 +40,18 @@
 // This plugin does not attempt to bypass that — chapterContent() on a locked chapter will just
 // return whatever preview/teaser text (or emptiness) the API actually serves while logged out.
 // chapterList() does not filter out locked chapters; they're listed like any other, since a reader
-// should be able to see a novel's full chapter count even if some entries can't be opened.
+// should be able to see a novel's full chapter count even if some entries can't be opened. Each
+// chapter entity in __NEXT_DATA__ carries `isAuth` (1 = free/accessible, 0 = needs unlock) and
+// `isVip` (0 = free, 2 = VIP-only) — confirmed live against a real catalog page, both flags always
+// agree — so `locked: ch.isAuth === 0` in chapterList()'s output lets the app show a lock badge
+// instead of silently serving the shortened teaser with no indication why.
 
 Register(JSON.stringify({
   id: "webnovel",
   name: "Webnovel",
   lang: "en",
   baseUrl: "https://m.webnovel.com",
-  version: "4.2.0",
+  version: "4.3.0",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=webnovel.com",
   // Genre slugs/labels and sort codes taken from LNReader's real, working Webnovel plugin. Genre:
@@ -292,6 +296,7 @@ globalThis.source = {
         name: ch.chapterName || "",
         url: BASE_URL + "book/" + bookId + "/" + ch.chapterId,
         chapterNumber: ch.chapterIndex,
+        locked: ch.isAuth === 0,
       };
     }));
   },
