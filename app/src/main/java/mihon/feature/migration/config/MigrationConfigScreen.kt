@@ -353,6 +353,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                         name = it.name,
                         supportsLatest = false,
                         isStub = false,
+                        iconUrl = it.iconUrl,
                     )
                     MigrationSource(
                         source = source,
