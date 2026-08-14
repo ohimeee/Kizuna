@@ -76,6 +76,7 @@ android {
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-${getLatestCommitCount()}"
             isPseudoLocalesEnabled = true
+            resValue("string", "app_name", "Kizuna Debug")
         }
         val release = getByName("release") {
             isMinifyEnabled = true
@@ -171,6 +172,7 @@ android {
         viewBinding = true
         buildConfig = true
         aidl = true
+        resValues = true
     }
 
     lint {
