@@ -26,7 +26,9 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import eu.kanade.domain.base.ContentModeFilter
 import eu.kanade.presentation.components.SearchToolbar
+import eu.kanade.presentation.components.iconAndTitleRes
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SourceFilter
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
@@ -45,6 +47,8 @@ fun GlobalSearchToolbar(
     onChangeSearchFilter: (SourceFilter) -> Unit,
     onlyShowHasResults: Boolean,
     onToggleResults: () -> Unit,
+    contentModeFilter: ContentModeFilter,
+    onCycleContentModeFilter: () -> Unit,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
@@ -122,6 +126,23 @@ fun GlobalSearchToolbar(
                 },
                 label = {
                     Text(text = stringResource(MR.strings.has_results))
+                },
+            )
+
+            val (contentModeIcon, contentModeTitleRes) = contentModeFilter.iconAndTitleRes()
+            FilterChip(
+                selected = contentModeFilter != ContentModeFilter.ALL,
+                onClick = onCycleContentModeFilter,
+                leadingIcon = {
+                    Icon(
+                        imageVector = contentModeIcon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(FilterChipDefaults.IconSize),
+                    )
+                },
+                label = {
+                    Text(text = stringResource(contentModeTitleRes))
                 },
             )
         }

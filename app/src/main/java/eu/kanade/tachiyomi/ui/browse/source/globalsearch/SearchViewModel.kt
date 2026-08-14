@@ -4,11 +4,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.produceState
 import androidx.lifecycle.viewModelScope
+import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.base.ContentModeFilter
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.Source
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.collectLatest
@@ -27,7 +29,6 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.concurrent.Executors
 
 abstract class SearchViewModel(
     initialState: State = State(),
@@ -37,9 +38,14 @@ abstract class SearchViewModel(
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
+    private val basePreferences: BasePreferences = Injekt.get(),
 ) : StateViewModel<SearchViewModel.State>(initialState) {
 
-    private val coroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher()
+    // Was a fixed 5-thread pool, which serialized searches across all enabled sources: with
+    // more than 5 sources installed, later ones (alphabetically, including the novel sources)
+    // queued behind earlier ones instead of running concurrently. Dispatchers.IO scales with
+    // demand instead of hard-capping at 5.
+    private val coroutineDispatcher = Dispatchers.IO
     private var searchJob: Job? = null
 
     private val enabledLanguages = sourcePreferences.enabledLanguages.get()
@@ -63,6 +69,11 @@ abstract class SearchViewModel(
         viewModelScope.launch {
             preferences.globalSearchFilterState.changes().collectLatest { state ->
                 mutableState.update { it.copy(onlyShowHasResults = state) }
+            }
+        }
+        viewModelScope.launch {
+            basePreferences.contentMode.changes().collectLatest { mode ->
+                mutableState.update { it.copy(contentModeFilter = mode) }
             }
         }
     }
@@ -114,6 +125,10 @@ abstract class SearchViewModel(
 
     fun toggleFilterResults() {
         preferences.globalSearchFilterState.toggle()
+    }
+
+    fun cycleContentModeFilter() {
+        basePreferences.contentMode.set(state.value.contentModeFilter.next())
     }
 
     fun search() {
@@ -207,12 +222,15 @@ abstract class SearchViewModel(
         val searchQuery: String? = null,
         val sourceFilter: SourceFilter = SourceFilter.PinnedOnly,
         val onlyShowHasResults: Boolean = false,
+        val contentModeFilter: ContentModeFilter = ContentModeFilter.ALL,
         val items: Map<Source, SearchItemResult> = mapOf(),
         val dialog: Dialog? = null,
     ) {
         val progress: Int = items.count { it.value !is SearchItemResult.Loading }
         val total: Int = items.size
-        val filteredItems = items.filter { (_, result) -> result.isVisible(onlyShowHasResults) }
+        val filteredItems = items.filter { (source, result) ->
+            contentModeFilter.matches(source.contentType) && result.isVisible(onlyShowHasResults)
+        }
     }
 
     sealed interface Dialog {

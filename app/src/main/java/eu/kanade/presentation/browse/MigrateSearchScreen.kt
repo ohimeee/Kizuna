@@ -18,6 +18,7 @@ fun MigrateSearchScreen(
     onSearch: (String) -> Unit,
     onChangeSearchFilter: (SourceFilter) -> Unit,
     onToggleResults: () -> Unit,
+    onCycleContentModeFilter: () -> Unit,
     getManga: @Composable (Manga) -> State<Manga>,
     onClickSource: (Source) -> Unit,
     onClickItem: (Manga) -> Unit,
@@ -37,6 +38,8 @@ fun MigrateSearchScreen(
                 onChangeSearchFilter = onChangeSearchFilter,
                 onlyShowHasResults = state.onlyShowHasResults,
                 onToggleResults = onToggleResults,
+                contentModeFilter = state.contentModeFilter,
+                onCycleContentModeFilter = onCycleContentModeFilter,
                 scrollBehavior = scrollBehavior,
             )
         },
