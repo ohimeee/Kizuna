@@ -62,6 +62,7 @@ import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.io.IOException
 import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 
@@ -277,6 +278,18 @@ class Downloader(
         if (chapters.isEmpty()) return
 
         val source = sourceManager.get(manga.source)?.takeIfDownloadable() ?: return
+
+        // A failed download stays in the queue as ERROR (only DOWNLOADED ones are removed), so the
+        // "already enqueued" filter below used to silently drop a retry request - re-tapping
+        // download on a red-flagged chapter did nothing at all, with no feedback explaining why.
+        // Drop those stale entries so the normal path below re-creates them as fresh downloads.
+        // Removing them (rather than just flipping status back to QUEUE in place) is what actually
+        // makes the retry run: queueState is a StateFlow of the queue *list*, so mutating a
+        // Download object in place leaves the list equal to itself, never re-emits, and an
+        // already-running downloader would go on ignoring the retried chapter.
+        val requestedChapterIds = chapters.mapTo(mutableSetOf()) { it.id }
+        removeFromQueueIf { it.status == Download.State.ERROR && it.chapter.id in requestedChapterIds }
+
         val wasEmpty = queueState.value.isEmpty()
         val chaptersToQueue = chapters.asSequence()
             // Filter out those already downloaded.
@@ -447,7 +460,23 @@ class Downloader(
         download.status = Download.State.DOWNLOADING
         page.status = Page.State.DownloadImage
 
-        val text = source.getChapterText(download.chapter.toSChapter())
+        // Same 3-attempt / 2-4-8s backoff the image path uses (see downloadImage), but only for
+        // transient network failures: a slow or briefly unreachable source is by far the most
+        // common cause of a single chapter failing in the middle of an otherwise fine batch, and
+        // it almost always succeeds on a retry. Non-network failures (notably the blank-text case
+        // below, which is what a paywalled chapter looks like) are deterministic - retrying those
+        // would just burn ~14s per chapter to reach the same result.
+        val text = flow { emit(source.getChapterText(download.chapter.toSChapter())) }
+            .retryWhen { cause, attempt ->
+                if (attempt < 3 && cause.isTransientNetworkFailure()) {
+                    delay((2L shl attempt.toInt()).seconds)
+                    true
+                } else {
+                    false
+                }
+            }
+            .first()
+
         if (text.isBlank()) {
             throw Exception(context.stringResource(MR.strings.page_list_empty_error))
         }
@@ -466,6 +495,24 @@ class Downloader(
         DiskUtil.createNoMediaFile(tmpDir, context)
 
         download.status = Download.State.DOWNLOADED
+    }
+
+    /**
+     * Whether this is (or wraps) a network failure worth retrying.
+     *
+     * The cause chain must be walked, not just the top-level type: a novel source's JS plugin is
+     * reached through a reflection proxy, so a [java.net.SocketTimeoutException] from its HTTP
+     * call surfaces here wrapped in a [java.lang.reflect.UndeclaredThrowableException]. Checking
+     * only the outermost type would never match the single most common real failure.
+     */
+    private fun Throwable.isTransientNetworkFailure(): Boolean {
+        var cause: Throwable? = this
+        // Bounded because a cause chain is allowed to be self-referential.
+        repeat(MAX_CAUSE_CHAIN_DEPTH) {
+            if (cause is IOException) return true
+            cause = cause?.cause ?: return false
+        }
+        return false
     }
 
     /**
@@ -790,6 +837,8 @@ class Downloader(
         /** Name of the file a downloaded [NovelSource] chapter's text is saved as, inside its
          * (otherwise image-folder-shaped) chapter directory. */
         const val NOVEL_CHAPTER_FILE_NAME = "chapter.txt"
+
+        private const val MAX_CAUSE_CHAIN_DEPTH = 8
         const val WARNING_NOTIF_TIMEOUT_MS = 30_000L
         const val CHAPTERS_PER_SOURCE_QUEUE_WARNING_THRESHOLD = 15
         private const val DOWNLOADS_QUEUED_WARNING_THRESHOLD = 30

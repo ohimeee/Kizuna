@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.core.net.toUri
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -418,7 +419,15 @@ class DownloadCache(
     }
 
     private fun getSources(): List<Source> {
-        return sourceManager.getOnlineSources() + sourceManager.getStubSources()
+        // Novel sources must be included explicitly: getOnlineSources() is HttpSource-only, and
+        // JsNovelSource implements NovelSource instead, so without this every novel source's
+        // download directory is dropped on the next cache rebuild. The chapters stay on disk and
+        // still open offline (the reader reads them straight off the filesystem), but the cache
+        // reports them as not downloaded, so their downloaded-badge silently disappears on the
+        // next app start or cache renewal.
+        return sourceManager.getOnlineSources() +
+            sourceManager.getAll().filterIsInstance<NovelSource>() +
+            sourceManager.getStubSources()
     }
 
     private fun notifyChanges() {
