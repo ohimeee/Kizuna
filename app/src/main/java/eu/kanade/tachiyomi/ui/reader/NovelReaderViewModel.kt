@@ -12,11 +12,13 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.NovelSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.system.logcat
@@ -70,10 +72,18 @@ class NovelReaderViewModel @JvmOverloads constructor(
     // result landing after a newer one.
     private var loadJob: Job? = null
 
+    /**
+     * The most recently requested (mangaId, chapterId), kept so [reloadChapter] still works after
+     * a failure that happened *before* any chapter could be put into state (e.g. the chapter-list
+     * fetch itself failed) - in that case there is no `state.chapter` to retry from.
+     */
+    private var lastTarget: Pair<Long, Long>? = null
+
     fun needsInit() = !initialized
 
     suspend fun init(mangaId: Long, chapterId: Long): Result<Boolean> {
         if (initialized) return Result.success(true)
+        lastTarget = mangaId to chapterId
         val result = loadManga(mangaId, chapterId)
         if (result.isSuccess) initialized = true
         return result
@@ -86,6 +96,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
      * regardless of [initialized], since the existing state is for the wrong chapter entirely.
      */
     fun openNewTarget(mangaId: Long, chapterId: Long) {
+        lastTarget = mangaId to chapterId
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             saveHistory()
@@ -123,11 +134,19 @@ class NovelReaderViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(isLoading = true, error = null) }
         chapterReadStartTime = System.currentTimeMillis()
 
+        // Computed up front (not just on success) so a failed load still lets the error screen's
+        // Previous/Next reflect *this* chapter instead of leaking over stale values from whichever
+        // chapter last loaded successfully.
+        val index = chapterList.indexOfFirst { it.id == chapter.id }
+        val hasPrevChapter = index > 0
+        val hasNextChapter = index in 0 until chapterList.lastIndex
+        val prevChapterName = chapterList.getOrNull(index - 1)?.name
+        val nextChapterName = chapterList.getOrNull(index + 1)?.name
+
         try {
             val manga = manga ?: error("Manga not loaded")
             val text = downloadManager.getChapterTextIfDownloaded(source, manga, chapter)
-                ?: source.getChapterText(chapter.toSChapter())
-            val index = chapterList.indexOfFirst { it.id == chapter.id }
+                ?: withTimeout(30_000) { source.getChapterText(chapter.toSChapter()) }
 
             val bodyParagraphs = splitParagraphs(text)
 
@@ -146,10 +165,10 @@ class NovelReaderViewModel @JvmOverloads constructor(
                         isLoading = false,
                         chapter = chapter,
                         error = "No content available - this chapter may be locked on the source site",
-                        hasPrevChapter = index > 0,
-                        hasNextChapter = index in 0 until chapterList.lastIndex,
-                        prevChapterName = chapterList.getOrNull(index - 1)?.name,
-                        nextChapterName = chapterList.getOrNull(index + 1)?.name,
+                        hasPrevChapter = hasPrevChapter,
+                        hasNextChapter = hasNextChapter,
+                        prevChapterName = prevChapterName,
+                        nextChapterName = nextChapterName,
                     )
                 }
                 return
@@ -164,10 +183,27 @@ class NovelReaderViewModel @JvmOverloads constructor(
                     paragraphs = paragraphs,
                     initialParagraphIndex = chapter.lastPageRead.toInt()
                         .coerceIn(0, (paragraphs.size - 1).coerceAtLeast(0)),
-                    hasPrevChapter = index > 0,
-                    hasNextChapter = index in 0 until chapterList.lastIndex,
-                    prevChapterName = chapterList.getOrNull(index - 1)?.name,
-                    nextChapterName = chapterList.getOrNull(index + 1)?.name,
+                    hasPrevChapter = hasPrevChapter,
+                    hasNextChapter = hasNextChapter,
+                    prevChapterName = prevChapterName,
+                    nextChapterName = nextChapterName,
+                )
+            }
+        } catch (e: TimeoutCancellationException) {
+            // TimeoutCancellationException is itself a CancellationException, so this must be
+            // caught ahead of the generic CancellationException rethrow below - otherwise a real
+            // timeout gets treated as job replacement and silently leaves isLoading stuck true
+            // forever instead of surfacing as the failure it actually is.
+            logcat(LogPriority.ERROR, e) { "Timed out loading chapter ${chapter.url}" }
+            mutableState.update {
+                it.copy(
+                    isLoading = false,
+                    chapter = chapter,
+                    error = "Loading timed out - the source may be slow or unreachable",
+                    hasPrevChapter = hasPrevChapter,
+                    hasNextChapter = hasNextChapter,
+                    prevChapterName = prevChapterName,
+                    nextChapterName = nextChapterName,
                 )
             }
         } catch (e: CancellationException) {
@@ -182,7 +218,15 @@ class NovelReaderViewModel @JvmOverloads constructor(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             mutableState.update {
-                it.copy(isLoading = false, error = e.message ?: "Failed to load chapter")
+                it.copy(
+                    isLoading = false,
+                    chapter = chapter,
+                    error = e.message ?: "Failed to load chapter",
+                    hasPrevChapter = hasPrevChapter,
+                    hasNextChapter = hasNextChapter,
+                    prevChapterName = prevChapterName,
+                    nextChapterName = nextChapterName,
+                )
             }
         }
     }
@@ -241,6 +285,25 @@ class NovelReaderViewModel @JvmOverloads constructor(
     fun loadNextChapter() = loadAdjacentChapter(offset = 1)
 
     fun loadPreviousChapter() = loadAdjacentChapter(offset = -1)
+
+    /** Retries the chapter currently shown (including a failed one) - does not navigate. */
+    fun reloadChapter() {
+        val chapter = state.value.chapter
+        val source = this.source
+
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            if (chapter != null && source != null) {
+                openChapter(source, chapter)
+            } else {
+                // Nothing loaded to retry from - the failure happened before a chapter (or the
+                // source) was ever resolved, so redo the whole load rather than no-op behind a
+                // button the error screen is actively offering.
+                val (mangaId, chapterId) = lastTarget ?: return@launch
+                loadManga(mangaId, chapterId)
+            }
+        }
+    }
 
     private fun loadAdjacentChapter(offset: Int) {
         val current = state.value.chapter ?: return

@@ -125,6 +125,7 @@ class NovelReaderActivity : BaseActivity() {
                 onProgress = viewModel::updateProgress,
                 onPrevChapter = viewModel::loadPreviousChapter,
                 onNextChapter = viewModel::loadNextChapter,
+                onReloadChapter = viewModel::reloadChapter,
                 onOpenInWebView = { openInWebView() },
                 onControlsVisibilityChanged = { controlsVisible = it },
             )

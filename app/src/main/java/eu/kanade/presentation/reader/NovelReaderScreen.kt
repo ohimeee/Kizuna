@@ -204,6 +204,7 @@ fun NovelReaderScreen(
     onProgress: (paragraphIndex: Int, isAtEnd: Boolean) -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    onReloadChapter: () -> Unit,
     onOpenInWebView: (() -> Unit)? = null,
     onControlsVisibilityChanged: (Boolean) -> Unit = {},
 ) {
@@ -327,6 +328,7 @@ fun NovelReaderScreen(
                             if (state.hasPrevChapter) {
                                 TextButton(onClick = onPrevChapter) { Text("Previous chapter") }
                             }
+                            TextButton(onClick = onReloadChapter) { Text("Reload") }
                             if (state.hasNextChapter) {
                                 TextButton(onClick = onNextChapter) { Text("Next chapter") }
                             }
