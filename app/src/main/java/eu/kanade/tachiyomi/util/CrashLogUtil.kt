@@ -40,7 +40,9 @@ class CrashLogUtil(
         try {
             val (uri, savedToStorage, fileName) = writeLogFile(exception)
             withUIContext {
-                context.toast(if (savedToStorage) "Saved to Kizuna/logs/$fileName" else "Saved log (storage folder not set up)")
+                context.toast(
+                    if (savedToStorage) "Saved to Kizuna/logs/$fileName" else "Saved log (storage folder not set up)",
+                )
             }
             context.startActivity(uri.toShareIntent(context, "text/plain"))
         } catch (e: Throwable) {
@@ -57,7 +59,9 @@ class CrashLogUtil(
      * PID rather than the whole device's logcat buffer - unscoped grabs mostly unrelated system
      * noise and pushes this app's own lines out of the (small, rotating) buffer.
      */
-    private suspend fun writeLogFile(exception: Throwable?): Triple<Uri, Boolean, String> = withContext(Dispatchers.IO) {
+    private suspend fun writeLogFile(
+        exception: Throwable?,
+    ): Triple<Uri, Boolean, String> = withContext(Dispatchers.IO) {
         // redirectErrorStream merges stderr into the same stream being read below - without it,
         // logcat filling the (unread) stderr pipe while this coroutine blocks reading stdout can
         // deadlock the process indefinitely.
@@ -77,8 +81,14 @@ class CrashLogUtil(
         val content = buildString {
             append(getDebugInfo())
             append("\n\n")
-            getExtensionsInfo()?.let { append(it); append("\n\n") }
-            exception?.let { append(it.stackTraceToString()); append("\n\n") }
+            getExtensionsInfo()?.let {
+                append(it)
+                append("\n\n")
+            }
+            exception?.let {
+                append(it.stackTraceToString())
+                append("\n\n")
+            }
             append(logcatOutput)
         }
 

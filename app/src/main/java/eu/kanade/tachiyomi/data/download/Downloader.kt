@@ -6,9 +6,9 @@ import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.model.getComicInfo
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.data.download.model.takeIfDownloadable
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
-import eu.kanade.tachiyomi.data.download.model.takeIfDownloadable
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.UnmeteredSource
@@ -378,7 +378,12 @@ class Downloader(
     }
 
     /** The original image-page download pipeline, for [HttpSource] (and any other non-[NovelSource]). */
-    private suspend fun downloadChapterPages(download: Download, tmpDir: UniFile, mangaDir: UniFile, chapterDirname: String) {
+    private suspend fun downloadChapterPages(
+        download: Download,
+        tmpDir: UniFile,
+        mangaDir: UniFile,
+        chapterDirname: String,
+    ) {
         val source = download.source as HttpSource
 
         // If the page list already exists, start from the file
@@ -453,7 +458,12 @@ class Downloader(
      * ComicInfo.xml (nothing image-reader-specific reads a novel chapter's folder). It's modeled
      * as a single [Page] purely so the existing progress/notifier/queue UI works unmodified.
      */
-    private suspend fun downloadNovelChapterText(download: Download, tmpDir: UniFile, mangaDir: UniFile, chapterDirname: String) {
+    private suspend fun downloadNovelChapterText(
+        download: Download,
+        tmpDir: UniFile,
+        mangaDir: UniFile,
+        chapterDirname: String,
+    ) {
         val source = download.source as NovelSource
         val page = download.pages?.firstOrNull() ?: Page(0, download.chapter.url).also { download.pages = listOf(it) }
 
@@ -834,6 +844,7 @@ class Downloader(
 
     companion object {
         const val TMP_DIR_SUFFIX = "_tmp"
+
         /** Name of the file a downloaded [NovelSource] chapter's text is saved as, inside its
          * (otherwise image-folder-shaped) chapter directory. */
         const val NOVEL_CHAPTER_FILE_NAME = "chapter.txt"

@@ -8,9 +8,9 @@ import androidx.compose.ui.util.fastFilter
 import androidx.lifecycle.viewModelScope
 import eu.kanade.core.preference.asState
 import eu.kanade.core.util.addOrRemove
+import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.base.ContentModeFilter
-import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.updates.UpdatesUiModel
@@ -427,7 +427,11 @@ class UpdatesViewModel(
             updatesPreferences.filterUnread.changes(),
             updatesPreferences.filterStarted.changes(),
             updatesPreferences.filterBookmarked.changes(),
-            combine(updatesPreferences.filterExcludedScanlators.changes(), basePreferences.contentMode.changes(), ::Pair),
+            combine(
+                updatesPreferences.filterExcludedScanlators.changes(),
+                basePreferences.contentMode.changes(),
+                ::Pair,
+            ),
         ) { downloaded, unread, started, bookmarked, (excludedScanlators, contentMode) ->
             ItemPreferences(
                 filterDownloaded = downloaded,
