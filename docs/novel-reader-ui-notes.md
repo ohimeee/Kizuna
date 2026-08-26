@@ -170,8 +170,101 @@ Confirmed by pixel-sampling a screenshot: the strip behind the status bar was al
   asked for. Removed on 2026-08-01 as "duplicated chrome" and **reverted the same day on explicit
   user request**; leave it alone.
 
+## Bottom navigation bar (added 2026-08-17, on request)
+
+A five-action row — previous chapter, scroll to top, chapter list, bookmark, next chapter —
+rendered by `NovelReaderNavBar` and modelled on LNReader's reader footer, which the user supplied
+as a reference screenshot.
+
+- **This is NOT the battery/time/progress footer**, and the two must not be merged. This bar is
+  part of the **tap-hideable chrome**: same `showControls` gating and same translucent
+  `chromeBackground` as the top bar, so it slides away with everything else. The status strip
+  keeps its own rules (see the footer section above) — always-on, gated only by
+  `showBatteryAndTime`, solid page-colored backdrop.
+- **The nav bar is drawn *over* the status strip, not stacked above it** — both are anchored to
+  the bottom edge inside `NovelReaderBottomChrome`, so raising the chrome covers the numbers and
+  hiding it hands the slot straight back. Stacking them pushed the nav bar up off the bottom edge,
+  which was explicitly rejected. Two earlier attempts also got this wrong in the other direction
+  by gating the strip on `!showControls` (i.e. hiding it outright) — don't; its visibility rule is
+  `showBatteryAndTime` and nothing else.
+  - That composable exists as a separate function for a compiler reason, not a stylistic one: with
+    a `ColumnScope` receiver in scope, `AnimatedVisibility` resolves to `ColumnScope`'s overload,
+    which then can't be called inside the `Box` that does the layering.
+  - The nav bar owns the `navigationBars` inset, since it's the bottom-most thing whenever it's up.
+- Bookmark and settings are **deliberately swapped relative to LNReader's layout**: settings lives
+  in the top bar (where it already was) and the bookmark toggle lives here in the nav bar. Asked
+  for explicitly; don't "restore" LNReader's arrangement.
+- Prev/next are disabled (dimmed to `DISABLED_ALPHA`) rather than hidden at the first/last chapter,
+  so the row never reflows under the reader's thumb.
+- The chapter-list button opens `NovelChapterListPanel` — a **slide-in panel over the page, not a
+  Material bottom sheet** (asked for explicitly, with a reference screenshot). It's chrome in the
+  same sense the bars are: scrim behind it, tap-outside/✕ to dismiss, slides in from the start
+  edge.
+  - **Painted from the CHROME palette** — `surfaceColorAtElevation(3.dp)` for the panel,
+    `chromeContentColor` for its text — *not* the reading theme's colours. This was tried the other
+    way first and reverted: the two palettes disagree whenever a light reading theme is used inside
+    a dark app theme (the common case), which left a glaringly white panel over a dark UI. Only
+    the accent (current chapter, bookmark icon, buttons) comes from `colorScheme.primary`.
+  - **The panel is opaque; everything it doesn't cover sits under one uniform dim** — page text
+    *and* the status strip alike (`CHAPTER_PANEL_SCRIM_ALPHA`). The bottom chrome is deliberately
+    drawn *before* the panel so the strip is dimmed along with the page; drawing it after left the
+    numbers punched through at full brightness, which was reported as "not covered".
+  - **Opening it hides the top bar and the nav bar** (`showControls && !showChapterList`). The
+    status strip is not hidden — it stays put and simply sits under the dim.
+  - Needs its own `BackHandler`: it's a hand-rolled overlay, not a `ModalBottomSheet`, so Back
+    would otherwise fall through and exit the reader.
+  - Starts scrolled to the chapter being read — novels here run to thousands of chapters, so
+    opening at the top would strand the reader. The two footer buttons ("Scroll to top" / "Scroll
+    to current chapter") move the *list*, not the reader.
+  - Rows show read chapters dimmed, a lock icon for chapters the source flagged paywalled
+    (`Chapter.isLocked`, e.g. Webnovel VIP), and a bookmark icon where set. Row padding is 18dp
+    vertical — deliberately roomier than Mihon's own 12dp chapter rows, since this is a full-height
+    picker rather than a dense inline list.
+- Bookmark state is read straight off `state.chapter.bookmark` rather than mirrored into a separate
+  state field, so there's only one source of truth to keep in sync.
+- **The nav bar's Next must not mark the outgoing chapter read.** Only the end-of-chapter pill does
+  (`finishAndLoadNextChapter` vs `loadNextChapter`) — the pill is reachable only by scrolling to the
+  bottom, whereas Next is reachable from anywhere, and marking-on-Next would flag a chapter read and
+  push that to AniList/MAL two paragraphs in. `loadAdjacentChapter` takes `markCurrentRead` for
+  exactly this reason; don't collapse the two entry points back together.
+- `chapterList` is loaded once per novel, so anything that changes a chapter (progress, read,
+  bookmark) has to go through `syncChapterInList` or the panel shows stale state and jumping back
+  to a chapter reopens it at an old position.
+
+## Status strip font (2026-08-17)
+
+`NovelReaderStatusBar` renders in the **reader's own font preference** at `bodyMedium`, not the app
+default at `labelSmall` — asked for explicitly ("follow the font the user chosen and make it a bit
+bigger"). The preference→`FontFamily` mapping lives in one shared `toFontFamily()` helper used by
+both the strip and the page body, so the two can't drift apart.
+
+## Auto-scroll
+
+Driven off `withFrameNanos`, not a fixed `delay`. It previously moved a whole `autoScrollSpeed`
+jump every 32ms (~31 steps/sec, in lockstep with nothing), which on a 60/90/120Hz panel read as
+visibly jagged. Scrolling once per drawn frame, scaled by real elapsed time, keeps it smooth at any
+refresh rate and holds the same average speed when a frame is late. Three things there are load-
+bearing:
+
+- **The elapsed delta is clamped** (`MAX_AUTO_SCROLL_FRAME_SECONDS`). Compose parks the frame clock
+  while the reader is backgrounded, so an unclamped delta replays the whole paused stretch as one
+  enormous jump on resume.
+- **`CancellationException` from `scrollBy` is swallowed** (re-checking via `ensureActive()`). A
+  drag takes the scroll mutex at `UserInput` priority and cancels our `Default`-priority scroll;
+  letting that escape ends the loop permanently, and since the `LaunchedEffect` keys don't change
+  nothing restarts it — one flick would silently kill auto-scroll until the setting was toggled.
+- **One `scrollBy` per frame, not a single long-lived `scroll {}` session** — a session, once
+  cancelled by a drag, is gone for good.
+
+Auto-scroll cannot trigger the pull-to-previous gesture: that connection rejects anything whose
+`NestedScrollSource` isn't `UserInput`, and programmatic scrolls arrive as `SideEffect`.
+
 ## Chapter switching
 
+- **The "no persistent prev/next row" rule below was reversed on 2026-08-17**: prev/next buttons
+  now exist in the bottom navigation bar documented above. The inline pills and the pull-down
+  gesture both stay as well — the nav bar is an addition, not a replacement. The original reasoning
+  is kept below for context.
 - **No persistent prev/next chapter button row.** Removed on request — replaced by two things:
   1. Inline pills inside the scrolling content itself: "Finished: {chapter name}" text +
      "Next: {name}" pill at the very end of the chapter (only when a next chapter exists).

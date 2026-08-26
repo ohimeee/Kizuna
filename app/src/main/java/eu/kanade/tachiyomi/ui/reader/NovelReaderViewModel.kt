@@ -116,6 +116,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
 
             chapterList = getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true)
                 .sortedWith(getChapterSort(manga, sortDescending = false))
+            mutableState.update { it.copy(chapters = chapterList) }
 
             val chapter = chapterList.find { it.id == chapterId } ?: error("Chapter not found")
 
@@ -244,9 +245,9 @@ class NovelReaderViewModel @JvmOverloads constructor(
         if (markRead && !wasRead) {
             updateTrackChapterRead(chapter)
         }
-        mutableState.update {
-            it.copy(chapter = chapter.copy(lastPageRead = paragraphIndex.toLong(), read = markRead))
-        }
+        val updated = chapter.copy(lastPageRead = paragraphIndex.toLong(), read = markRead)
+        syncChapterInList(updated)
+        mutableState.update { it.copy(chapter = updated) }
     }
 
     /**
@@ -282,9 +283,52 @@ class NovelReaderViewModel @JvmOverloads constructor(
         return source?.getChapterUrl(chapter.toSChapter())
     }
 
-    fun loadNextChapter() = loadAdjacentChapter(offset = 1)
+    /**
+     * Plain forward navigation - does NOT mark the outgoing chapter read. Used by the nav bar's
+     * Next button and the error screen, both reachable from anywhere in a chapter; treating those
+     * as "finished" would mark a chapter read (and push that to trackers) two paragraphs in.
+     * [finishAndLoadNextChapter] is the one that means "read this to the end".
+     */
+    fun loadNextChapter() = loadAdjacentChapter(offset = 1, markCurrentRead = false)
 
-    fun loadPreviousChapter() = loadAdjacentChapter(offset = -1)
+    /**
+     * Advances from the end-of-chapter pill, which is only reachable by scrolling to the bottom,
+     * so the outgoing chapter really was read.
+     */
+    fun finishAndLoadNextChapter() = loadAdjacentChapter(offset = 1, markCurrentRead = true)
+
+    fun loadPreviousChapter() = loadAdjacentChapter(offset = -1, markCurrentRead = false)
+
+    /** Jumps straight to a chapter picked from the reader's chapter-list sheet. */
+    fun openChapterById(chapterId: Long) {
+        if (chapterId == state.value.chapter?.id) return
+        val target = chapterList.find { it.id == chapterId } ?: return
+        val source = this.source ?: return
+
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            saveHistory()
+            openChapter(source, target)
+        }
+    }
+
+    /**
+     * Toggles the bookmark on the chapter being read. State is updated up front rather than
+     * waiting on the DB write, so the icon reacts immediately; [chapterList] is kept in sync too
+     * so the chapter-list sheet doesn't show a stale flag for the same chapter.
+     */
+    fun toggleBookmark() {
+        val chapter = state.value.chapter ?: return
+        val bookmarked = !chapter.bookmark
+        val updated = chapter.copy(bookmark = bookmarked)
+
+        syncChapterInList(updated)
+        mutableState.update { it.copy(chapter = updated) }
+
+        viewModelScope.launchNonCancellable {
+            updateChapter.await(ChapterUpdate(id = chapter.id, bookmark = bookmarked))
+        }
+    }
 
     /** Retries the chapter currently shown (including a failed one) - does not navigate. */
     fun reloadChapter() {
@@ -305,19 +349,18 @@ class NovelReaderViewModel @JvmOverloads constructor(
         }
     }
 
-    private fun loadAdjacentChapter(offset: Int) {
+    private fun loadAdjacentChapter(offset: Int, markCurrentRead: Boolean) {
         val current = state.value.chapter ?: return
         val index = chapterList.indexOfFirst { it.id == current.id }
         val target = chapterList.getOrNull(index + offset) ?: return
         val source = manga?.let { sourceManager.get(it.source) as? NovelSource } ?: return
 
-        // Advancing marks the chapter being left as read. The only way forward is the "Next: ..."
-        // pill rendered after the last paragraph, so getting here means the chapter was read to
-        // the end - but the scroll-driven progress collector is debounced, so tapping that pill
-        // promptly would otherwise navigate away before the end-of-chapter update ever landed and
-        // leave a fully-read chapter sitting at 80-90% and unread. Going backwards must not mark
-        // anything.
-        if (offset > 0 && !current.read) {
+        // Only the end-of-chapter pill passes markCurrentRead - it sits after the last paragraph,
+        // so reaching it means the chapter was read to the end, and the scroll-driven progress
+        // collector is debounced enough that tapping it promptly would otherwise navigate away
+        // before the end-of-chapter update landed, leaving a finished chapter at 80-90% and
+        // unread. The nav bar's Next button is reachable from anywhere and must not mark anything.
+        if (markCurrentRead && offset > 0 && !current.read) {
             markChapterRead(current)
         }
 
@@ -328,11 +371,26 @@ class NovelReaderViewModel @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Writes an updated chapter back into the cached [chapterList] (and the state copy the
+     * chapter-list sheet renders from).
+     *
+     * [chapterList] is loaded once per novel and otherwise never refreshed, so without this any
+     * progress made this session is invisible to it: the sheet would show chapters finished
+     * minutes ago as still unread, and jumping back to one via the sheet would reopen it at its
+     * stale `lastPageRead` - then overwrite the good value on the next scroll.
+     */
+    private fun syncChapterInList(updated: Chapter) {
+        chapterList = chapterList.map { if (it.id == updated.id) updated else it }
+        mutableState.update { it.copy(chapters = chapterList) }
+    }
+
     private fun markChapterRead(chapter: Chapter) {
         viewModelScope.launchNonCancellable {
             updateChapter.await(ChapterUpdate(id = chapter.id, read = true))
         }
         updateTrackChapterRead(chapter)
+        syncChapterInList(chapter.copy(read = true))
         mutableState.update {
             if (it.chapter?.id == chapter.id) it.copy(chapter = chapter.copy(read = true)) else it
         }
@@ -394,6 +452,8 @@ class NovelReaderViewModel @JvmOverloads constructor(
         /** Novel title, shown as the reader top bar's subtitle under the chapter name. */
         val mangaTitle: String? = null,
         val chapter: Chapter? = null,
+        /** Every chapter of this novel, in reading order - backs the reader's chapter-list sheet. */
+        val chapters: List<Chapter> = emptyList(),
         val paragraphs: List<String> = emptyList(),
         val initialParagraphIndex: Int = 0,
         val hasPrevChapter: Boolean = false,

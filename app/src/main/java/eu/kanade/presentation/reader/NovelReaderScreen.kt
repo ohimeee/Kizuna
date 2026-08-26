@@ -1,6 +1,7 @@
 package eu.kanade.presentation.reader
 
 import android.os.BatteryManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
@@ -13,6 +14,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
@@ -50,8 +52,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
@@ -60,6 +69,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -87,6 +97,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -128,8 +139,13 @@ import eu.kanade.tachiyomi.ui.reader.setting.NovelTextAlign
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.util.collectAsState
 import java.util.Date
@@ -157,6 +173,21 @@ private val LoraFontFamily = FontFamily(
     Font(R.font.lora_italic, weight = FontWeight.Normal, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.lora_italic, weight = FontWeight.Bold, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
+/**
+ * The reader's font preference as a real [FontFamily]. Shared so the status strip renders in
+ * whatever the reader picked rather than the app's default, instead of each call site repeating
+ * the mapping and drifting apart.
+ */
+@Composable
+private fun NovelFontFamily.toFontFamily(): FontFamily = when (this) {
+    NovelFontFamily.ORIGINAL -> FontFamily.Default
+    NovelFontFamily.SERIF -> FontFamily.Serif
+    NovelFontFamily.SANS_SERIF -> FontFamily.SansSerif
+    NovelFontFamily.MONOSPACE -> FontFamily.Monospace
+    NovelFontFamily.LORA -> LoraFontFamily
+    NovelFontFamily.NUNITO -> NunitoFontFamily
+}
+
 private val NunitoFontFamily = FontFamily(
     Font(R.font.nunito, weight = FontWeight.Normal, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.nunito, weight = FontWeight.Bold, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
@@ -178,6 +209,30 @@ private const val MIN_SEARCH_LENGTH = 3
 
 /** Ceiling on collected hits, so a pathological query can't build a huge list on the UI thread. */
 private const val MAX_SEARCH_MATCHES = 500
+
+/** Leaves a strip of the page visible beside the chapter panel, so it reads as an overlay. */
+private const val CHAPTER_PANEL_WIDTH_FRACTION = 0.86f
+
+/** Dividers are drawn from the reading theme's text colour, so they need to be knocked well back. */
+private const val DIVIDER_ALPHA = 0.2f
+
+/**
+ * Dim behind the chapter panel. Deep enough that the page reads as pushed back rather than merely
+ * tinted, but not opaque - the strip of page beside the panel stays visible, just clearly inert.
+ */
+private const val CHAPTER_PANEL_SCRIM_ALPHA = 0.6f
+
+/**
+ * Converts the auto-scroll speed preference into pixels per second. The old loop moved
+ * `autoScrollSpeed` pixels every 32ms, so this keeps 1000/32 as the scale and every existing
+ * saved speed keeps feeling exactly as fast as it did.
+ */
+private const val AUTO_SCROLL_SPEED_SCALE = 1000f / 32f
+
+private const val NANOS_PER_SECOND = 1_000_000_000f
+
+/** Longest per-frame step auto-scroll will honour, so a parked frame clock can't resume as a leap. */
+private const val MAX_AUTO_SCROLL_FRAME_SECONDS = 1f / 30f
 
 private val SEARCH_SPECIAL_CHARACTER_REGEX = Regex("""[^\p{L}\p{N}\s]""")
 
@@ -204,7 +259,10 @@ fun NovelReaderScreen(
     onProgress: (paragraphIndex: Int, isAtEnd: Boolean) -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    onFinishChapter: () -> Unit,
     onReloadChapter: () -> Unit,
+    onToggleBookmark: () -> Unit,
+    onSelectChapter: (Long) -> Unit,
     onOpenInWebView: (() -> Unit)? = null,
     onControlsVisibilityChanged: (Boolean) -> Unit = {},
 ) {
@@ -222,8 +280,17 @@ fun NovelReaderScreen(
 
     val showVerticalSeekbar by preferences.showVerticalSeekbar.collectAsState()
     val showBatteryAndTime by preferences.showBatteryAndTime.collectAsState()
+    // The status strip renders in the reader's own font, so this is needed out here rather than
+    // only inside NovelReaderContent.
+    val statusBarFontFamilyPref by preferences.fontFamily.collectAsState()
+    val statusBarFontFamily = statusBarFontFamilyPref.toFontFamily()
 
     var showSettings by remember { mutableStateOf(false) }
+    var showChapterList by remember { mutableStateOf(false) }
+
+    // The chapter panel is a hand-rolled overlay rather than a Material sheet, so Back doesn't
+    // dismiss it for free - without this it would fall through and exit the reader entirely.
+    BackHandler(enabled = showChapterList) { showChapterList = false }
     // Tapping the reading area toggles all chrome (top bar, status bar, seekbar) - same
     // tap-to-hide behavior as Mihon's image reader. Starts hidden: opening a chapter drops
     // straight into the reading view, not into the chrome.
@@ -244,6 +311,13 @@ fun NovelReaderScreen(
     // Chrome is app-themed (see chromeBackgroundColor), so its content is too - using the reading
     // theme's text color here would render invisible whenever the two themes disagree.
     val chromeContentColor = MaterialTheme.colorScheme.onSurface
+    // Solid counterpart to chromeBackground, for the chapter panel. The bars are translucent
+    // because they're thin strips over the page; a full-height panel at that alpha just lets the
+    // page text read through it.
+    val chapterPanelBackground = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
+    // Hoisted out of the chrome Column: the bottom chrome is drawn from the root Box now (so the
+    // status strip can sit above the chapter panel), and reads this from there.
+    val progressPercent = readingProgressPercent(listState, state.paragraphs.size)
 
     // --- In-chapter text search (mirrors LNReader's reader searchbar) ---
     var searchVisible by remember(state.chapter?.id) { mutableStateOf(false) }
@@ -343,7 +417,7 @@ fun NovelReaderScreen(
                         textColor = textColor,
                         onProgress = onProgress,
                         onPrevChapter = onPrevChapter,
-                        onNextChapter = onNextChapter,
+                        onFinishChapter = onFinishChapter,
                         searchQuery = debouncedQuery,
                         activeMatchParagraph = activeMatch?.paragraphIndex ?: -1,
                         activeMatchOffset = activeMatch?.offset ?: -1,
@@ -355,7 +429,9 @@ fun NovelReaderScreen(
         // Chrome overlay - drawn on top of the content above, never resizes it.
         Column(modifier = Modifier.fillMaxSize()) {
             AnimatedVisibility(
-                visible = showControls,
+                // The chapter panel replaces the chrome rather than stacking on top of it, so the
+                // top bar steps aside while it's open. The battery/progress/time strip does not.
+                visible = showControls && !showChapterList,
                 enter = slideInVertically(chromeSlideAnimationSpec) { -it } + fadeIn(chromeFadeAnimationSpec),
                 exit = slideOutVertically(chromeSlideAnimationSpec) { -it } + fadeOut(chromeFadeAnimationSpec),
             ) {
@@ -432,8 +508,6 @@ fun NovelReaderScreen(
                 }
             }
 
-            val progressPercent = readingProgressPercent(listState, state.paragraphs.size)
-
             if (showVerticalSeekbar && state.paragraphs.isNotEmpty()) {
                 Row(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -469,22 +543,71 @@ fun NovelReaderScreen(
                 Spacer(Modifier.weight(1f))
             }
 
-            // The footer is NOT part of the hideable chrome - it stays up whenever its own
-            // preference is on, tap-to-hide or not, so progress/battery/time can be glanced at
-            // without bringing the rest of the chrome back. Because it's always visible it needs
-            // the solid page-colored backdrop below, or scrolling body text runs into the numbers.
-            AnimatedVisibility(
-                visible = showBatteryAndTime,
-                enter = slideInVertically(chromeSlideAnimationSpec) { it } + fadeIn(chromeFadeAnimationSpec),
-                exit = slideOutVertically(chromeSlideAnimationSpec) { it } + fadeOut(chromeFadeAnimationSpec),
-            ) {
-                NovelReaderStatusBar(
-                    progressPercent = progressPercent,
-                    textColor = textColor,
-                    backgroundColor = backgroundColor,
-                )
-            }
         }
+
+        // Bottom chrome, drawn before the chapter list so the list's backdrop dims the
+        // battery/progress/time strip along with everything else. The strip itself is unchanged:
+        // rooted at the bottom, governed only by its own preference, never tied to tap-to-hide.
+        NovelReaderBottomChrome(
+            showNavBar = showControls && !showChapterList,
+            showBatteryAndTime = showBatteryAndTime,
+            progressPercent = progressPercent,
+            textColor = textColor,
+            backgroundColor = backgroundColor,
+            chromeBackground = chromeBackground,
+            chromeContentColor = chromeContentColor,
+            statusBarFontFamily = statusBarFontFamily,
+            hasPrevChapter = state.hasPrevChapter,
+            hasNextChapter = state.hasNextChapter,
+            isBookmarked = state.chapter?.bookmark == true,
+            onPrevChapter = onPrevChapter,
+            onScrollToTop = { scope.launch { listState.animateScrollToItem(0) } },
+            onOpenChapterList = { showChapterList = true },
+            onToggleBookmark = onToggleBookmark,
+            onNextChapter = onNextChapter,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        // Chapter list. Chrome, like the bars - a slide-in panel over the page rather than a
+        // Material bottom sheet, painted from the *chrome* palette (what the top and nav bars
+        // use) rather than the reading theme's. Those two disagree whenever a light reading theme
+        // is used inside a dark app theme, which left this panel glaringly white while everything
+        // else on screen was dark.
+        //
+        // The panel is solid, and everything it doesn't cover - page text and the status strip
+        // alike - sits under one uniform dim, so nothing pokes through at full brightness beside
+        // it. Drawn after the bottom chrome above precisely so that strip is dimmed too.
+        AnimatedVisibility(
+            visible = showChapterList,
+            enter = fadeIn(chromeFadeAnimationSpec),
+            exit = fadeOut(chromeFadeAnimationSpec),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = CHAPTER_PANEL_SCRIM_ALPHA))
+                    .pointerInput(Unit) { detectTapGestures { showChapterList = false } },
+            )
+        }
+        AnimatedVisibility(
+            visible = showChapterList,
+            enter = slideInHorizontally(chromeSlideAnimationSpec) { -it },
+            exit = slideOutHorizontally(chromeSlideAnimationSpec) { -it },
+            modifier = Modifier.align(Alignment.CenterStart),
+        ) {
+            NovelChapterListPanel(
+                chapters = state.chapters,
+                currentChapterId = state.chapter?.id,
+                backgroundColor = chapterPanelBackground,
+                textColor = chromeContentColor,
+                onSelectChapter = {
+                    showChapterList = false
+                    onSelectChapter(it)
+                },
+                onClose = { showChapterList = false },
+            )
+        }
+
     }
 
     if (showSettings) {
@@ -493,6 +616,133 @@ fun NovelReaderScreen(
             sheetState = rememberModalBottomSheetState(),
         ) {
             NovelReaderSettingsSheet(preferences = preferences)
+        }
+    }
+
+}
+
+
+/**
+ * Chapter picker behind the nav bar's list button: a slide-in panel over the page, painted from
+ * the chrome palette so it matches the top/nav bars rather than the page underneath - a light
+ * reading theme inside a dark app theme would otherwise leave this panel glaringly white.
+ *
+ * Opens already scrolled to the chapter being read - a novel here can run to thousands of
+ * chapters, so landing at the top of the list would strand the reader.
+ */
+@Composable
+private fun NovelChapterListPanel(
+    chapters: List<Chapter>,
+    currentChapterId: Long?,
+    backgroundColor: Color,
+    textColor: Color,
+    onSelectChapter: (Long) -> Unit,
+    onClose: () -> Unit,
+) {
+    val currentIndex = remember(chapters, currentChapterId) {
+        chapters.indexOfFirst { it.id == currentChapterId }.coerceAtLeast(0)
+    }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = currentIndex)
+    val scope = rememberCoroutineScope()
+    val accentColor = MaterialTheme.colorScheme.primary
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth(CHAPTER_PANEL_WIDTH_FRACTION)
+            .fillMaxHeight()
+            .background(backgroundColor)
+            .windowInsetsPadding(WindowInsets.systemBars),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = MaterialTheme.padding.medium, end = MaterialTheme.padding.small)
+                .padding(vertical = MaterialTheme.padding.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Chapters",
+                style = MaterialTheme.typography.titleLarge,
+                color = textColor,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onClose) {
+                Icon(Icons.Filled.Close, contentDescription = "Close chapter list", tint = textColor)
+            }
+        }
+        HorizontalDivider(color = textColor.copy(alpha = DIVIDER_ALPHA))
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f),
+        ) {
+            itemsIndexed(chapters, key = { _, chapter -> chapter.id }) { _, chapter ->
+                val isCurrent = chapter.id == currentChapterId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectChapter(chapter.id) }
+                        .background(if (isCurrent) accentColor.copy(alpha = 0.12f) else Color.Transparent)
+                        // Roomier than Mihon's own chapter rows (which use 12.dp vertical): this
+                        // list is a full-height picker scrolled with a thumb, not a dense inline
+                        // list, and at Mihon's density the entries read as one solid block.
+                        .padding(start = 16.dp, top = 18.dp, end = 8.dp, bottom = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = chapter.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = when {
+                            isCurrent -> accentColor
+                            // Read chapters dim, matching how the details screen greys them out.
+                            chapter.read -> textColor.copy(alpha = DISABLED_ALPHA)
+                            else -> textColor
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (chapter.isLocked) {
+                        Icon(
+                            imageVector = Icons.Outlined.Lock,
+                            contentDescription = "Locked on the source site",
+                            tint = textColor.copy(alpha = DISABLED_ALPHA),
+                            modifier = Modifier
+                                .padding(start = MaterialTheme.padding.extraSmall)
+                                .size(16.dp),
+                        )
+                    }
+                    if (chapter.bookmark) {
+                        Icon(
+                            imageVector = Icons.Filled.Bookmark,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier
+                                .padding(start = MaterialTheme.padding.extraSmall)
+                                .size(16.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(color = textColor.copy(alpha = DIVIDER_ALPHA))
+        Column(
+            modifier = Modifier.padding(MaterialTheme.padding.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+        ) {
+            Button(
+                onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Scroll to top")
+            }
+            Button(
+                onClick = { scope.launch { listState.animateScrollToItem(currentIndex) } },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Scroll to current chapter")
+            }
         }
     }
 }
@@ -513,6 +763,147 @@ private fun readingProgressPercent(listState: LazyListState, total: Int): Int {
 }
 
 /**
+ * Bottom chrome: the always-on battery/progress/time strip, with the tap-hideable nav bar drawn
+ * *over* it. Both are anchored to the bottom edge, so bringing the chrome up covers the numbers
+ * rather than pushing the nav bar above them, and the strip itself keeps the exact behaviour it
+ * always had - rooted at the bottom, governed only by its own preference, never tied to
+ * tap-to-hide.
+ *
+ * This lives in its own composable rather than inline in the chrome `Column` for a compiler
+ * reason: with a `ColumnScope` receiver still in scope, `AnimatedVisibility` resolves to
+ * `ColumnScope.AnimatedVisibility`, which then can't be called inside the `Box` here.
+ */
+@Composable
+private fun NovelReaderBottomChrome(
+    showNavBar: Boolean,
+    showBatteryAndTime: Boolean,
+    progressPercent: Int,
+    textColor: Color,
+    backgroundColor: Color,
+    chromeBackground: Color,
+    chromeContentColor: Color,
+    statusBarFontFamily: FontFamily,
+    hasPrevChapter: Boolean,
+    hasNextChapter: Boolean,
+    isBookmarked: Boolean,
+    onPrevChapter: () -> Unit,
+    onScrollToTop: () -> Unit,
+    onOpenChapterList: () -> Unit,
+    onToggleBookmark: () -> Unit,
+    onNextChapter: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        // Unchanged from before the nav bar existed: needs the solid page-colored backdrop, or
+        // scrolling body text runs into the numbers.
+        AnimatedVisibility(
+            visible = showBatteryAndTime,
+            enter = slideInVertically(chromeSlideAnimationSpec) { it } + fadeIn(chromeFadeAnimationSpec),
+            exit = slideOutVertically(chromeSlideAnimationSpec) { it } + fadeOut(chromeFadeAnimationSpec),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            NovelReaderStatusBar(
+                progressPercent = progressPercent,
+                textColor = textColor,
+                backgroundColor = backgroundColor,
+                fontFamily = statusBarFontFamily,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showNavBar,
+            enter = slideInVertically(chromeSlideAnimationSpec) { it } + fadeIn(chromeFadeAnimationSpec),
+            exit = slideOutVertically(chromeSlideAnimationSpec) { it } + fadeOut(chromeFadeAnimationSpec),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            NovelReaderNavBar(
+                hasPrevChapter = hasPrevChapter,
+                hasNextChapter = hasNextChapter,
+                isBookmarked = isBookmarked,
+                backgroundColor = chromeBackground,
+                contentColor = chromeContentColor,
+                onPrevChapter = onPrevChapter,
+                onScrollToTop = onScrollToTop,
+                onOpenChapterList = onOpenChapterList,
+                onToggleBookmark = onToggleBookmark,
+                onNextChapter = onNextChapter,
+                // Drawn over the status strip, so it owns the navigation-bar inset too -
+                // otherwise its buttons sit under the system gesture bar.
+                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+            )
+        }
+    }
+}
+
+/**
+ * Bottom navigation row: previous chapter, scroll to top, chapter list, bookmark, next chapter.
+ *
+ * Unlike the battery/progress strip below it, this **is** part of the tap-hideable chrome - it
+ * mirrors the top bar, sharing its `showControls` gating and translucent background. Prev/next are
+ * dimmed rather than removed at the first/last chapter so the row never reflows under a thumb.
+ */
+@Composable
+private fun NovelReaderNavBar(
+    hasPrevChapter: Boolean,
+    hasNextChapter: Boolean,
+    isBookmarked: Boolean,
+    backgroundColor: Color,
+    contentColor: Color,
+    onPrevChapter: () -> Unit,
+    onScrollToTop: () -> Unit,
+    onOpenChapterList: () -> Unit,
+    onToggleBookmark: () -> Unit,
+    onNextChapter: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(backgroundColor)
+            .then(modifier)
+            .padding(vertical = MaterialTheme.padding.extraSmall),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onPrevChapter, enabled = hasPrevChapter) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Previous chapter",
+                tint = contentColor.copy(alpha = if (hasPrevChapter) 1f else DISABLED_ALPHA),
+            )
+        }
+        IconButton(onClick = onScrollToTop) {
+            Icon(
+                imageVector = Icons.Filled.VerticalAlignTop,
+                contentDescription = "Scroll to top",
+                tint = contentColor,
+            )
+        }
+        IconButton(onClick = onOpenChapterList) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.List,
+                contentDescription = "Chapter list",
+                tint = contentColor,
+            )
+        }
+        IconButton(onClick = onToggleBookmark) {
+            Icon(
+                imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                contentDescription = if (isBookmarked) "Remove bookmark" else "Bookmark chapter",
+                tint = if (isBookmarked) MaterialTheme.colorScheme.primary else contentColor,
+            )
+        }
+        IconButton(onClick = onNextChapter, enabled = hasNextChapter) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Next chapter",
+                tint = contentColor.copy(alpha = if (hasNextChapter) 1f else DISABLED_ALPHA),
+            )
+        }
+    }
+}
+
+/**
  * Three plain segments in a row - battery level, reading progress, clock. Shown together as one
  * unit, gated only by `preferences.showBatteryAndTime` - never tied to tap-to-hide, so the reader
  * can glance at progress/battery/time without needing to bring the rest of the chrome up. Clock
@@ -524,7 +915,11 @@ private fun NovelReaderStatusBar(
     progressPercent: Int,
     textColor: Color,
     backgroundColor: Color,
+    fontFamily: FontFamily,
 ) {
+    // Follows the reader's own font choice and sits a step up from labelSmall - at 11sp in the
+    // app default these numbers were noticeably smaller than anything else on the page.
+    val textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = fontFamily)
     val context = LocalContext.current
     var batteryPercent by remember { mutableIntStateOf(-1) }
     var currentTime by remember { mutableStateOf("") }
@@ -558,17 +953,17 @@ private fun NovelReaderStatusBar(
         Text(
             text = if (batteryPercent >= 0) "$batteryPercent%" else "",
             color = textColor,
-            style = MaterialTheme.typography.labelSmall,
+            style = textStyle,
         )
         Text(
             text = "$progressPercent%",
             color = textColor,
-            style = MaterialTheme.typography.labelSmall,
+            style = textStyle,
         )
         Text(
             text = currentTime,
             color = textColor,
-            style = MaterialTheme.typography.labelSmall,
+            style = textStyle,
         )
     }
 }
@@ -627,7 +1022,8 @@ private fun NovelReaderContent(
     textColor: Color,
     onProgress: (paragraphIndex: Int, isAtEnd: Boolean) -> Unit,
     onPrevChapter: () -> Unit,
-    onNextChapter: () -> Unit,
+    /** The end-of-chapter pill - the one forward control that means "finished", so it marks read. */
+    onFinishChapter: () -> Unit,
     searchQuery: String = "",
     activeMatchParagraph: Int = -1,
     activeMatchOffset: Int = -1,
@@ -650,14 +1046,7 @@ private fun NovelReaderContent(
         NovelTextAlign.JUSTIFY -> TextAlign.Justify
         NovelTextAlign.RIGHT -> TextAlign.Right
     }
-    val fontFamily = when (fontFamilyPref) {
-        NovelFontFamily.ORIGINAL -> FontFamily.Default
-        NovelFontFamily.SERIF -> FontFamily.Serif
-        NovelFontFamily.SANS_SERIF -> FontFamily.SansSerif
-        NovelFontFamily.MONOSPACE -> FontFamily.Monospace
-        NovelFontFamily.LORA -> LoraFontFamily
-        NovelFontFamily.NUNITO -> NunitoFontFamily
-    }
+    val fontFamily = fontFamilyPref.toFontFamily()
     val paragraphSpacing = if (removeExtraSpacing) MaterialTheme.padding.extraSmall else MaterialTheme.padding.medium
 
     // Observe the end-of-chapter state alongside the index, not just the index. Scrolling through
@@ -674,11 +1063,42 @@ private fun NovelReaderContent(
             }
     }
 
+    // Auto-scroll, driven off the display's own frame clock rather than a fixed delay.
+    //
+    // This used to scroll a whole `autoScrollSpeed` pixels every 32ms - about 31 steps a second,
+    // in lockstep with nothing. On a 60/90/120Hz panel that lands between frames and moves the
+    // page in visible jumps, which is what read as jagged. Waiting on withFrameNanos instead
+    // scrolls exactly once per drawn frame, and scaling by the real elapsed time means each frame
+    // moves a proportional (often sub-pixel) amount - so it stays smooth at any refresh rate and
+    // holds the same average speed even if a frame is late.
+    //
+    // One scrollBy per frame rather than a single long-lived scroll session: a session, once
+    // cancelled, is gone for good, whereas each per-frame scroll is independent (see the catch
+    // below).
     LaunchedEffect(listState, autoScroll, autoScrollSpeed) {
         if (!autoScroll) return@LaunchedEffect
+        val pixelsPerSecond = autoScrollSpeed * AUTO_SCROLL_SPEED_SCALE
+        var previousFrameNanos = withFrameNanos { it }
         while (isActive) {
-            listState.scrollBy(autoScrollSpeed.toFloat())
-            delay(32)
+            val frameNanos = withFrameNanos { it }
+            // Clamped: Compose parks the frame clock while the reader is backgrounded, so an
+            // unclamped delta would replay the entire paused stretch as one enormous jump the
+            // instant it resumes - background for two minutes and the page would leap thousands
+            // of pixels. Capping at a slow frame keeps that to a single ordinary step.
+            val elapsedSeconds = ((frameNanos - previousFrameNanos) / NANOS_PER_SECOND)
+                .coerceAtMost(MAX_AUTO_SCROLL_FRAME_SECONDS)
+            previousFrameNanos = frameNanos
+            try {
+                listState.scrollBy(pixelsPerSecond * elapsedSeconds)
+            } catch (_: CancellationException) {
+                // A drag takes the scroll mutex at UserInput priority, which cancels this
+                // Default-priority scroll. Auto-scroll has to survive that - letting it escape
+                // would end the loop for good, and the LaunchedEffect's keys haven't changed, so
+                // nothing would ever restart it: one flick would silently kill auto-scroll until
+                // the user toggled the setting off and on. Only a real cancellation of this
+                // coroutine should stop us, which is exactly what ensureActive() rethrows.
+                currentCoroutineContext().ensureActive()
+            }
         }
     }
 
@@ -814,7 +1234,7 @@ private fun NovelReaderContent(
                     if (state.hasNextChapter) {
                         ChapterSwitchPill(
                             label = "Next: ${state.nextChapterName.orEmpty()}",
-                            onClick = onNextChapter,
+                            onClick = onFinishChapter,
                         )
                     }
                 }

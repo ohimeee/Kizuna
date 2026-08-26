@@ -5,13 +5,13 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.viewModels
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
@@ -125,7 +125,10 @@ class NovelReaderActivity : BaseActivity() {
                 onProgress = viewModel::updateProgress,
                 onPrevChapter = viewModel::loadPreviousChapter,
                 onNextChapter = viewModel::loadNextChapter,
+                onFinishChapter = viewModel::finishAndLoadNextChapter,
                 onReloadChapter = viewModel::reloadChapter,
+                onToggleBookmark = viewModel::toggleBookmark,
+                onSelectChapter = viewModel::openChapterById,
                 onOpenInWebView = { openInWebView() },
                 onControlsVisibilityChanged = { controlsVisible = it },
             )
