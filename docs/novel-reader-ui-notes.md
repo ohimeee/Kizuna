@@ -57,6 +57,31 @@ HTML) with one full blank line of extra space before the body text starts (`para
 "remove extra spacing" preference. Implemented in the `itemsIndexed(paragraphs)` loop in
 `NovelReaderContent`, keyed off `index == 0`.
 
+Since 2026-08-26 it is also **scaled up to read as a real heading** — `CHAPTER_TITLE_SCALE` (1.7x)
+with its own tighter `CHAPTER_TITLE_LINE_SPACING`, modelled on LNReader. Two things to preserve:
+
+- The scale is a **multiple of the reader's own font size**, never a fixed `sp` value, so the
+  heading keeps its proportion at every text size.
+- The heading treatment is gated on **length as well as position** (`CHAPTER_TITLE_MAX_LENGTH`).
+  `splitParagraphs` only splits on block boundaries, so "first paragraph is the title" is a
+  convention, not a guarantee — a source whose chapter opens straight into prose would otherwise
+  get a whole paragraph set at 1.7x. Bold and the trailing blank line still apply either way.
+
+`CHAPTER_TOP_PADDING` puts space above that title (the `top` of the `LazyColumn`'s
+`contentPadding`). The reader draws edge-to-edge and hides the system bars while reading, at which
+point the ancestor's `systemBars` inset collapses to zero and the title sat flush against the top
+of the screen, close enough to a punch-hole camera to be clipped. **Keep it a flat value** — using
+the `displayCutout` inset was tried and reverted: it is already covered by the `systemBars` padding
+while the bars are up (so the text jumped by a cutout's height every time the chrome was toggled),
+and it reports zero while the bars are hidden, which is the exact case it was meant for.
+
+Chapter text sits in a **`SelectionContainer`** so it can be long-pressed, selected and copied —
+Compose text is inert without one. Known limit, inherent to rendering chapters in a `LazyColumn`:
+a selection dragged well past the viewport only captures paragraphs still composed, so "select
+all" across a long chapter won't take everything. Rendering the whole chapter as a single `Text`
+would fix it and break paragraph-index progress, search highlighting and the progress percent —
+don't.
+
 General tab: fullscreen, battery & time, reading progress, vertical seekbar, remove extra spacing,
 bionic reading, keep screen on, auto-scroll (+ speed slider). **TTS explicitly excluded** — user
 said "no dont build TTS" when asked; don't add a TTS tab.
