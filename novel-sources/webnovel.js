@@ -51,7 +51,7 @@ Register(JSON.stringify({
   name: "Webnovel",
   lang: "en",
   baseUrl: "https://m.webnovel.com",
-  version: "4.3.0",
+  version: "4.4.0",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=webnovel.com",
   // Genre slugs/labels and sort codes taken from LNReader's real, working Webnovel plugin. Genre:
@@ -131,6 +131,25 @@ function bookIdFromUrl(url) {
   var path = url.split("?")[0].replace(/\/$/, "");
   var match = path.match(/(\d+)$/);
   return match ? match[1] : "";
+}
+
+// Webnovel stores a chapter's number and its title as separate fields (chapterIndex/chapterName),
+// and chapterName is just the bare title - "Slave Caravan", not "Chapter 2 - Slave Caravan". Every
+// other source here scrapes a title that already carries its own number, so using chapterName
+// as-is left Webnovel the only source whose chapter list showed no numbering at all. Build the
+// display name instead of trusting the raw field.
+function chapterDisplayName(ch) {
+  var title = (ch.chapterName || "").trim();
+  var number = ch.chapterIndex;
+
+  // A handful of books do embed the number in the title themselves; prefixing those too would
+  // read as "Chapter 2: Chapter 2: Foo". Either an explicit chapter word ("Chapter 12: Foo",
+  // "Ch.14 - Foo") or a leading number followed by punctuation ("13. Foo") counts as numbered.
+  // A bare leading number does not: "100 Days of Summer" is a title, not chapter 100.
+  if (/^(chapter|ch\.?|episode|ep\.?)\s*\d+/i.test(title) || /^\d+\s*[-:.)]/.test(title)) return title;
+
+  if (!title) return "Chapter " + number;
+  return "Chapter " + number + ": " + title;
 }
 
 // Chapter URLs are "/book/{bookId}/{chapterId}" (synthesized by chapterList - see file header).
@@ -293,7 +312,7 @@ globalThis.source = {
 
     return JSON.stringify(chapters.map(function (ch) {
       return {
-        name: ch.chapterName || "",
+        name: chapterDisplayName(ch),
         url: BASE_URL + "book/" + bookId + "/" + ch.chapterId,
         chapterNumber: ch.chapterIndex,
         locked: ch.isAuth === 0,
