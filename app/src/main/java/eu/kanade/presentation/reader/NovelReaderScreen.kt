@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -233,6 +234,25 @@ private const val NANOS_PER_SECOND = 1_000_000_000f
 
 /** Longest per-frame step auto-scroll will honour, so a parked frame clock can't resume as a leap. */
 private const val MAX_AUTO_SCROLL_FRAME_SECONDS = 1f / 30f
+
+/**
+ * Chapter title size, as a multiple of the reader's body text size. Modelled on LNReader, where
+ * the title reads as a proper heading rather than emboldened body text.
+ */
+private const val CHAPTER_TITLE_SCALE = 1.7f
+
+/** Titles wrap often, and body line spacing set on a heading this size drifts too far apart. */
+private const val CHAPTER_TITLE_LINE_SPACING = 1.25f
+
+/** Space above the chapter title, kept clear of the top edge (and of any camera cutout). */
+private val CHAPTER_TOP_PADDING = 32.dp
+
+/**
+ * Longest first paragraph still treated as a chapter heading. Real titles are short; anything
+ * past this is prose from a source that didn't emit a heading line, and blowing it up to
+ * [CHAPTER_TITLE_SCALE] would look broken.
+ */
+private const val CHAPTER_TITLE_MAX_LENGTH = 120
 
 private val SEARCH_SPECIAL_CHARACTER_REGEX = Regex("""[^\p{L}\p{N}\s]""")
 
@@ -1167,75 +1187,106 @@ private fun NovelReaderContent(
             )
         }
 
-        LazyColumn(
-            state = listState,
-            contentPadding = PaddingValues(
-                start = contentPadding.dp,
-                end = contentPadding.dp,
-                top = MaterialTheme.padding.medium,
-                // The footer (progress/battery/time) is always-visible overlay, not part of the
-                // scrollable content, so without extra bottom padding the last item (the
-                // Finished/Next-chapter pill) ends up rendered right underneath it instead of
-                // stopping above it once scrolled all the way down.
-                bottom = if (showBatteryAndTime) 64.dp else MaterialTheme.padding.medium,
-            ),
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(nestedScrollConnection)
-                .offset { IntOffset(0, overscrollPx.roundToInt()) },
-        ) {
-            itemsIndexed(paragraphs) { index, paragraph ->
-                // The chapter title is always the first paragraph (source HTML's own heading
-                // line, see NovelReaderViewModel.splitParagraphs) - always bold, with one blank
-                // line of extra space before the body starts, regardless of the
-                // "remove extra spacing" preference.
-                val isTitle = index == 0
-                val annotated = remember(paragraph, bionicReading) {
-                    val base = parseInlineHtml(paragraph)
-                    if (bionicReading) applyBionicReading(base) else base
-                }
-                // Only this paragraph's own hit counts as "active" - every other match in the
-                // chapter gets the plain wash.
-                val activeOffset = if (index == activeMatchParagraph) activeMatchOffset else null
-                val displayed = remember(annotated, searchQuery, activeOffset) {
-                    if (searchQuery.isEmpty()) {
-                        annotated
-                    } else {
-                        highlightSearchMatches(annotated, searchQuery, activeOffset)
+        // Long-press to select, then copy/share - the same thing LNReader allows. Compose text is
+        // inert unless it sits inside a SelectionContainer, which is why none of this was
+        // selectable before.
+        SelectionContainer {
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(
+                    start = contentPadding.dp,
+                    end = contentPadding.dp,
+                    // Breathing room above the chapter title. The reader draws edge-to-edge and
+                    // hides the system bars while reading, at which point the ancestor's systemBars
+                    // inset collapses to zero and the title sat flush against the top of the screen
+                    // - close enough to a punch-hole camera to be clipped by it.
+                    //
+                    // Deliberately a flat value rather than the displayCutout inset: that inset is
+                    // already covered by the ancestor's systemBars padding while the bars are up, so
+                    // adding it here made the text jump down by a cutout's height every time the
+                    // chrome was toggled - and it reports zero while the bars are hidden, which is
+                    // the exact case this is for.
+                    top = CHAPTER_TOP_PADDING,
+                    // The footer (progress/battery/time) is always-visible overlay, not part of the
+                    // scrollable content, so without extra bottom padding the last item (the
+                    // Finished/Next-chapter pill) ends up rendered right underneath it instead of
+                    // stopping above it once scrolled all the way down.
+                    bottom = if (showBatteryAndTime) 64.dp else MaterialTheme.padding.medium,
+                ),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(nestedScrollConnection)
+                    .offset { IntOffset(0, overscrollPx.roundToInt()) },
+            ) {
+                itemsIndexed(paragraphs) { index, paragraph ->
+                    // The chapter title is always the first paragraph (source HTML's own heading
+                    // line, see NovelReaderViewModel.splitParagraphs) - always bold and scaled up to
+                    // read as a real heading rather than just emboldened body text, with one blank
+                    // line of extra space before the body starts, regardless of the
+                    // "remove extra spacing" preference.
+                    val isTitle = index == 0
+                    // The heading treatment is gated on length as well as position: splitParagraphs
+                    // only splits on block boundaries, so the first paragraph is a title by
+                    // convention, not by guarantee. A source whose chapter body opens straight into
+                    // prose would otherwise get a whole paragraph set at 1.7x with heading line
+                    // spacing. Bold and the trailing blank line still apply either way, as before.
+                    val isHeading = isTitle && paragraph.length <= CHAPTER_TITLE_MAX_LENGTH
+                    // Scales with the reader's own font size rather than being a fixed sp value, so
+                    // the heading keeps its proportion at every text size the user picks.
+                    val paragraphFontSize = if (isHeading) fontSize * CHAPTER_TITLE_SCALE else fontSize.toFloat()
+                    val annotated = remember(paragraph, bionicReading) {
+                        val base = parseInlineHtml(paragraph)
+                        if (bionicReading) applyBionicReading(base) else base
                     }
-                }
-                Text(
-                    text = displayed,
-                    color = textColor,
-                    fontSize = fontSize.sp,
-                    fontWeight = if (isTitle) FontWeight.Bold else null,
-                    lineHeight = (fontSize * lineSpacing).sp,
-                    textAlign = textAlign,
-                    fontFamily = fontFamily,
-                    modifier = Modifier.padding(
-                        bottom = if (isTitle) {
-                            paragraphSpacing + (fontSize * lineSpacing).dp
+                    // Only this paragraph's own hit counts as "active" - every other match in the
+                    // chapter gets the plain wash.
+                    val activeOffset = if (index == activeMatchParagraph) activeMatchOffset else null
+                    val displayed = remember(annotated, searchQuery, activeOffset) {
+                        if (searchQuery.isEmpty()) {
+                            annotated
                         } else {
-                            paragraphSpacing
-                        },
-                    ),
-                )
-            }
-
-            item(key = "chapter-end") {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                            highlightSearchMatches(annotated, searchQuery, activeOffset)
+                        }
+                    }
                     Text(
-                        text = "Finished: ${state.chapter?.name.orEmpty()}",
+                        text = displayed,
                         color = textColor,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(bottom = MaterialTheme.padding.medium),
+                        fontSize = paragraphFontSize.sp,
+                        fontWeight = if (isTitle) FontWeight.Bold else null,
+                        // A heading set at the body's line spacing drifts far apart when it wraps, so
+                        // the title gets its own tighter multiplier while the body keeps the user's.
+                        lineHeight = if (isHeading) {
+                            (paragraphFontSize * CHAPTER_TITLE_LINE_SPACING).sp
+                        } else {
+                            (fontSize * lineSpacing).sp
+                        },
+                        textAlign = textAlign,
+                        fontFamily = fontFamily,
+                        modifier = Modifier.padding(
+                            bottom = if (isTitle) {
+                                paragraphSpacing + (fontSize * lineSpacing).dp
+                            } else {
+                                paragraphSpacing
+                            },
+                        ),
                     )
-                    if (state.hasNextChapter) {
-                        ChapterSwitchPill(
-                            label = "Next: ${state.nextChapterName.orEmpty()}",
-                            onClick = onFinishChapter,
+                }
+
+                item(key = "chapter-end") {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Finished: ${state.chapter?.name.orEmpty()}",
+                            color = textColor,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(bottom = MaterialTheme.padding.medium),
                         )
+                        if (state.hasNextChapter) {
+                            ChapterSwitchPill(
+                                label = "Next: ${state.nextChapterName.orEmpty()}",
+                                onClick = onFinishChapter,
+                            )
+                        }
                     }
                 }
             }
