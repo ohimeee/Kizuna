@@ -1,31 +1,36 @@
-// NovelFire (novelfire.net) — aggregator/scanlation-style web novel reading site.
-// Written independently against Kizuna's NovelSource contract (see docs/novel-sources/README.md).
+// Novel Phoenix (novelphoenix.com) — aggregator-style web novel reading site.
+// Written against Kizuna's NovelSource contract (see docs/novel-sources/README.md).
 //
-// Selectors verified against real page source (curl with a browser UA, plain requests worked
-// fine — no Cloudflare/bot-challenge encountered on this site, unlike Webnovel):
-// - Listing/search items are `.novel-item` (`a[title]`/`a[href]` for title/url,
-//   `img.lazy[data-src]` for cover — covers are lazy-loaded, `src` is just a placeholder gif).
-//   Same markup on both the genre-listing pages and `/search?keyword=`.
-// - Detail page: `h1.novel-title`, `.author a`, `.fixed-img .cover img[src]` (not lazy here),
-//   `.summary .content` for description (not `.summary` itself - that block opens with an
-//   `<h4 class="lined">Summary</h4>` heading, which prefixed every description with the literal
-//   word "Summary"), `.categories ul li a` for genres. Status has no fixed class name
-//   (seen "ongoing"/likely "completed" as a variant) so it's selected positionally as the last
-//   `<span>` in `.header-stats` rather than by a specific status class.
-// - Chapter list lives on a separate `/book/{slug}/chapters` page (not the detail page itself),
-//   all chapters on one page (no pagination seen up to ~95 chapters) — `.chapter-list li a`.
-// - Chapter content is `#content` directly, clean `<p>` tags, no extra wrapper cruft observed.
+// This site runs the same engine as NovelFire - LNReader ships both from a single shared
+// template (plugins/multisrc/novelfire/sources.json lists novelfire.net and novelphoenix.com as
+// the only two entries), and every selector below was re-verified against novelphoenix.com's own
+// live HTML rather than assumed from that shared lineage:
+// - Listing/search items are `.novel-item` (`a[title]`/`a[href]`, `img.lazy[data-src]` for the
+//   lazy-loaded cover - plain `src` is a placeholder gif). Same markup on genre listings and
+//   `/search?keyword=`.
+// - Novel URLs are `/novel/{slug}` here, not NovelFire's `/book/{slug}`. Nothing hardcodes that,
+//   since URLs always come from the listing's own hrefs.
+// - Detail page: `h1.novel-title`, `.author a`, `.fixed-img .cover img[src]` (already absolute,
+//   not lazy), `.categories ul li a` for genres, and the last `.header-stats` span's `<strong>`
+//   for status (no dedicated status class - it's positional, `<strong class="ongoing">Ongoing</strong>`).
+// - Description is `.summary .content`, NOT `.summary`: the container opens with an
+//   `<h4 class="lined">Summary</h4>` heading, so selecting the whole block prefixes every
+//   description with the literal word "Summary".
+// - Chapter list lives on `/novel/{slug}/chapters` and paginates at 100/page. Verified that a
+//   page past the end (`?page=999`) returns zero chapter links rather than clamping to the last
+//   page, so the paging loop below terminates instead of spinning forever.
+// - Chapter content is `#content` (confirmed ~96 clean `<p>` tags on a real chapter).
 
 Register(JSON.stringify({
-  id: "novelfire",
-  name: "NovelFire",
+  id: "novelphoenix",
+  name: "Novel Phoenix",
   lang: "en",
-  baseUrl: "https://novelfire.net",
-  version: "2.2.0",
+  baseUrl: "https://novelphoenix.com",
+  version: "1.0.0",
   supportsLatest: true,
-  iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelfire.net",
-  // Slugs scraped from the real genre-listing page's nav links/URLs
-  // (/genre-{genre}/sort-{sort}/status-{status}/all-novel).
+  iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelphoenix.com",
+  // Genre slugs scraped from the site's own nav on /genre-all/sort-popular/status-all/all-novel
+  // (56 of them; labels tidied where the site's own casing is inconsistent, e.g. "Magical realism").
   filters: [
     {
       id: "genre",
@@ -79,6 +84,7 @@ Register(JSON.stringify({
         { label: "System", value: "system" },
         { label: "Tragedy", value: "tragedy" },
         { label: "Urban", value: "urban" },
+        { label: "Urban Life", value: "urban-life" },
         { label: "Video Games", value: "video-games" },
         { label: "War", value: "war" },
         { label: "Wuxia", value: "wuxia" },
@@ -117,12 +123,24 @@ Register(JSON.stringify({
   ],
 }));
 
-var BASE_URL = "https://novelfire.net/";
+var BASE_URL = "https://novelphoenix.com/";
 
 function absoluteUrl(url) {
   if (!url) return url;
   if (url.indexOf("http") === 0) return url;
   return BASE_URL.replace(/\/$/, "") + url;
+}
+
+// The site prefixes its own "Chapter N - " onto titles that frequently already start with the
+// same number, giving "Chapter 1 - 1: Nightmare Begins". Collapse that one duplicated number so
+// it reads "Chapter 1: Nightmare Begins". Only fires when the two numbers actually match, so a
+// genuine title like "Chapter 5 - The 3 Kings" is left alone.
+function cleanChapterTitle(title) {
+  if (!title) return title;
+  var match = title.match(/^\s*Chapter\s+(\d+)\s*-\s*\1\s*[:.\-]?\s*([\s\S]*)$/i);
+  if (!match) return title.trim();
+  var rest = match[2].trim();
+  return rest ? "Chapter " + match[1] + ": " + rest : "Chapter " + match[1];
 }
 
 function parseListing(html) {
@@ -156,9 +174,8 @@ globalThis.source = {
     return parseListing(html);
   },
 
-  // The app's filter sheet (genre/sort/status/country above) always calls searchNovels, never
-  // popularNovels/latestNovels directly - so genre/sort/status/country browsing (no keyword) is
-  // handled here too, via the same genre-listing URL popularNovels uses.
+  // The app's filter sheet always routes through searchNovels, never popularNovels/latestNovels,
+  // so filter-only browsing (no keyword) is handled here via the same genre-listing URL.
   searchNovels: function (query, page, filtersJson) {
     var filters = JSON.parse(filtersJson || "{}");
 
@@ -189,9 +206,8 @@ globalThis.source = {
   },
 
   chapterList: function (novelUrl) {
-    // The chapters page paginates at 100/page (confirmed live against a 3000+ chapter novel) -
-    // a single fetch silently truncated long novels to their first 100 chapters. Loop until a
-    // page comes back with no chapter links.
+    // 100 chapters per page; loop until a page returns none. Confirmed live that an over-the-end
+    // page yields zero links rather than repeating the last one, so this terminates.
     var baseChaptersUrl = novelUrl.replace(/\/?$/, "") + "/chapters";
     var allUrls = [];
     var allTitles = [];
@@ -210,7 +226,7 @@ globalThis.source = {
 
     return JSON.stringify(allUrls.map(function (url, i) {
       return {
-        name: allTitles[i] || ("Chapter " + (i + 1)),
+        name: cleanChapterTitle(allTitles[i]) || ("Chapter " + (i + 1)),
         url: absoluteUrl(url),
         chapterNumber: i + 1,
       };
