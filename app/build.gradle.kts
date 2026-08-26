@@ -26,6 +26,12 @@ if (Config.includeTelemetry) {
 
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 
+// Names the built artifacts after the app rather than the Gradle module, so release downloads read
+// as Kizuna-arm64-v8a-release.apk instead of the default app-arm64-v8a-release.apk.
+base {
+    archivesName.set("Kizuna")
+}
+
 android {
     namespace = "eu.kanade.tachiyomi"
 
