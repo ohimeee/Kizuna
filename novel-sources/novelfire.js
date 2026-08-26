@@ -7,9 +7,11 @@
 //   `img.lazy[data-src]` for cover — covers are lazy-loaded, `src` is just a placeholder gif).
 //   Same markup on both the genre-listing pages and `/search?keyword=`.
 // - Detail page: `h1.novel-title`, `.author a`, `.fixed-img .cover img[src]` (not lazy here),
-//   `.summary .content` for description (not `.summary` itself - that block opens with an
-//   `<h4 class="lined">Summary</h4>` heading, which prefixed every description with the literal
-//   word "Summary"), `.categories ul li a` for genres. Status has no fixed class name
+//   the `<p>` elements inside `.summary .content` for description - not `.summary` itself (that
+//   block opens with an `<h4 class="lined">Summary</h4>` heading, which prefixed every
+//   description with the literal word "Summary"), and not the whole `.content` block either
+//   (it ends with a "Show More" expand button whose label got swept into the text).
+//   `.categories ul li a` for genres. Status has no fixed class name
 //   (seen "ongoing"/likely "completed" as a variant) so it's selected positionally as the last
 //   `<span>` in `.header-stats` rather than by a specific status class.
 // - Chapter list lives on a separate `/book/{slug}/chapters` page (not the detail page itself),
@@ -21,7 +23,7 @@ Register(JSON.stringify({
   name: "NovelFire",
   lang: "en",
   baseUrl: "https://novelfire.net",
-  version: "2.2.0",
+  version: "2.3.0",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelfire.net",
   // Slugs scraped from the real genre-listing page's nav links/URLs
@@ -125,6 +127,20 @@ function absoluteUrl(url) {
   return BASE_URL.replace(/\/$/, "") + url;
 }
 
+// `.summary .content` carries a "Show More" expand button inside it
+// (`<div class="expand"><a class="expand-btn">...<span>Show More</span></a></div>`), so taking the
+// block's whole text tacks that label onto the end of every description. Read just the paragraphs.
+function novelDescription(html) {
+  var paragraphs = selectAllText(html, ".summary .content p");
+  if (paragraphs && paragraphs.length) {
+    var text = paragraphs.join("\n\n").trim();
+    if (text) return text;
+  }
+  // Fallback for any novel whose blurb isn't wrapped in <p> at all.
+  var raw = selectText(html, ".summary .content") || "";
+  return raw.replace(/\s*Show More\s*$/i, "").trim();
+}
+
 function parseListing(html) {
   var urls = selectAllAttr(html, ".novel-item a", "href");
   var titles = selectAllAttr(html, ".novel-item a", "title");
@@ -182,7 +198,7 @@ globalThis.source = {
       title: selectText(html, "h1.novel-title"),
       cover: selectAttr(html, ".fixed-img .cover img", "src") || null,
       author: selectText(html, ".author a"),
-      description: selectText(html, ".summary .content"),
+      description: novelDescription(html),
       genres: selectAllText(html, ".categories ul li a"),
       status: selectText(html, ".header-stats span:last-child strong"),
     });

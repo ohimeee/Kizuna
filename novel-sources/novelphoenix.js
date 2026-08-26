@@ -13,9 +13,10 @@
 // - Detail page: `h1.novel-title`, `.author a`, `.fixed-img .cover img[src]` (already absolute,
 //   not lazy), `.categories ul li a` for genres, and the last `.header-stats` span's `<strong>`
 //   for status (no dedicated status class - it's positional, `<strong class="ongoing">Ongoing</strong>`).
-// - Description is `.summary .content`, NOT `.summary`: the container opens with an
-//   `<h4 class="lined">Summary</h4>` heading, so selecting the whole block prefixes every
-//   description with the literal word "Summary".
+// - Description is the `<p>` elements inside `.summary .content`. Not `.summary` itself, which
+//   opens with an `<h4 class="lined">Summary</h4>` heading that would prefix every description
+//   with the literal word "Summary"; and not the whole `.content` block either, since that ends
+//   with a "Show More" expand button whose label would be swept into the text.
 // - Chapter list lives on `/novel/{slug}/chapters` and paginates at 100/page. Verified that a
 //   page past the end (`?page=999`) returns zero chapter links rather than clamping to the last
 //   page, so the paging loop below terminates instead of spinning forever.
@@ -26,7 +27,7 @@ Register(JSON.stringify({
   name: "Novel Phoenix",
   lang: "en",
   baseUrl: "https://novelphoenix.com",
-  version: "1.0.0",
+  version: "1.0.1",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelphoenix.com",
   // Genre slugs scraped from the site's own nav on /genre-all/sort-popular/status-all/all-novel
@@ -143,6 +144,20 @@ function cleanChapterTitle(title) {
   return rest ? "Chapter " + match[1] + ": " + rest : "Chapter " + match[1];
 }
 
+// `.summary .content` carries a "Show More" expand button inside it
+// (`<div class="expand"><a class="expand-btn">...<span>Show More</span></a></div>`), so taking the
+// block's whole text tacks that label onto the end of every description. Read just the paragraphs.
+function novelDescription(html) {
+  var paragraphs = selectAllText(html, ".summary .content p");
+  if (paragraphs && paragraphs.length) {
+    var text = paragraphs.join("\n\n").trim();
+    if (text) return text;
+  }
+  // Fallback for any novel whose blurb isn't wrapped in <p> at all.
+  var raw = selectText(html, ".summary .content") || "";
+  return raw.replace(/\s*Show More\s*$/i, "").trim();
+}
+
 function parseListing(html) {
   var urls = selectAllAttr(html, ".novel-item a", "href");
   var titles = selectAllAttr(html, ".novel-item a", "title");
@@ -199,7 +214,7 @@ globalThis.source = {
       title: selectText(html, "h1.novel-title"),
       cover: selectAttr(html, ".fixed-img .cover img", "src") || null,
       author: selectText(html, ".author a"),
-      description: selectText(html, ".summary .content"),
+      description: novelDescription(html),
       genres: selectAllText(html, ".categories ul li a"),
       status: selectText(html, ".header-stats span:last-child strong"),
     });
