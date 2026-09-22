@@ -3,8 +3,6 @@ package eu.kanade.presentation.history
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -20,6 +18,9 @@ import eu.kanade.presentation.components.relativeDateText
 import eu.kanade.presentation.history.components.HistoryItem
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.tachiyomi.ui.history.HistoryViewModel
+import kotlinx.datetime.LocalDate
+import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.rounded.DeleteSweep
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
@@ -28,7 +29,6 @@ import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
-import java.time.LocalDate
 
 @Composable
 fun HistoryScreen(
@@ -52,7 +52,7 @@ fun HistoryScreen(
                             contentModeAction(),
                             AppBar.Action(
                                 title = stringResource(MR.strings.pref_clear_history),
-                                icon = Icons.Outlined.DeleteSweep,
+                                icon = MaterialSymbols.Rounded.DeleteSweep,
                                 onClick = {
                                     onDialogChange(HistoryViewModel.Dialog.DeleteAll)
                                 },

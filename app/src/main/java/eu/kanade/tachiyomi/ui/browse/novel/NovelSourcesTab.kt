@@ -5,8 +5,8 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.viewmodel.compose.viewModel
 import cafe.adriel.voyager.core.screen.Screen
+import dev.zacsweers.metrox.viewmodel.metroViewModel
 import eu.kanade.presentation.browse.NovelSourcesScreen
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
@@ -15,7 +15,7 @@ import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
 fun Screen.novelSourcesTab(): TabContent {
-    val viewModel = viewModel<NovelSourcesViewModel>()
+    val viewModel = metroViewModel<NovelSourcesViewModel>()
     val state by viewModel.state.collectAsState()
 
     return TabContent(

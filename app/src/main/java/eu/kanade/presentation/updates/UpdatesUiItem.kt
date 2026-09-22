@@ -12,9 +12,6 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -22,17 +19,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.relativeDateText
+import eu.kanade.presentation.library.components.rememberIsNovelSource
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.manga.components.ChapterDownloadIndicator
 import eu.kanade.presentation.manga.components.DotSeparatorText
@@ -41,6 +41,10 @@ import eu.kanade.presentation.util.relativeTimeSpanString
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.ui.updates.UpdatesItem
+import mihon.app.di.appGraph
+import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.roundedfilled.Bookmark
+import mihon.icons.materialsymbols.roundedfilled.Circle
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.i18n.MR
@@ -49,8 +53,6 @@ import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.selectedBackground
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 internal fun LazyListScope.updatesLastUpdatedItem(
     lastUpdated: Long,
@@ -105,10 +107,7 @@ internal fun LazyListScope.updatesUiItems(
                 // NovelReaderViewModel) - showing it as "Page: N" for a novel chapter is
                 // misleading, and a raw paragraph number means nothing without a total to compare
                 // it to, so novels just get a plain "in progress" label instead.
-                val sourceManager = remember { Injekt.get<SourceManager>() }
-                val isNovel = remember(updatesItem.update.sourceId) {
-                    sourceManager.get(updatesItem.update.sourceId)?.contentType == SourceContentType.NOVEL
-                }
+                val isNovel = rememberIsNovelSource(updatesItem.update.sourceId)
                 UpdatesUiItem(
                     modifier = Modifier.animateItem(),
                     update = updatesItem.update,
@@ -202,7 +201,7 @@ private fun UpdatesUiItem(
                 var textHeight by remember { mutableIntStateOf(0) }
                 if (!update.read) {
                     Icon(
-                        imageVector = Icons.Filled.Circle,
+                        imageVector = MaterialSymbols.RoundedFilled.Circle,
                         contentDescription = stringResource(MR.strings.unread),
                         modifier = Modifier
                             .height(8.dp)
@@ -212,7 +211,7 @@ private fun UpdatesUiItem(
                 }
                 if (update.bookmark) {
                     Icon(
-                        imageVector = Icons.Filled.Bookmark,
+                        imageVector = MaterialSymbols.RoundedFilled.Bookmark,
                         contentDescription = stringResource(MR.strings.action_filter_bookmarked),
                         modifier = Modifier
                             .sizeIn(maxHeight = with(LocalDensity.current) { textHeight.toDp() - 2.dp }),

@@ -4,10 +4,7 @@ import android.content.Context
 import android.content.Intent
 import eu.kanade.tachiyomi.source.SourceContentType
 import kotlinx.coroutines.runBlocking
-import tachiyomi.domain.manga.interactor.GetManga
-import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
+import mihon.app.di.appGraph
 
 /**
  * Builds the intent to open a chapter's reader, routing to [NovelReaderActivity] or
@@ -18,11 +15,14 @@ fun readerIntent(
     context: Context,
     mangaId: Long?,
     chapterId: Long?,
-    getManga: GetManga = Injekt.get(),
-    sourceManager: SourceManager = Injekt.get(),
 ): Intent {
+    val graph = context.appGraph
     val contentType = mangaId?.let { id ->
-        runBlocking { getManga.await(id) }?.let { sourceManager.get(it.source)?.contentType }
+        // SourceManager's surface is suspend as of the 0.20.4 merge, so the source lookup has to
+        // happen inside the same blocking block as the manga lookup.
+        runBlocking {
+            graph.getManga.await(id)?.let { graph.sourceManager.get(it.source)?.contentType }
+        }
     }
 
     return if (contentType == SourceContentType.NOVEL) {

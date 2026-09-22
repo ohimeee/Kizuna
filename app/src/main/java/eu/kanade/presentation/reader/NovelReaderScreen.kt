@@ -18,7 +18,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -32,16 +31,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -49,8 +44,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -60,24 +60,23 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.VerticalAlignTop
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -87,6 +86,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalSlider
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberSliderState
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -98,9 +98,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -137,12 +137,12 @@ import eu.kanade.tachiyomi.ui.reader.setting.NovelFontFamily
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderTheme
 import eu.kanade.tachiyomi.ui.reader.setting.NovelTextAlign
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import tachiyomi.domain.chapter.model.Chapter
@@ -168,12 +168,20 @@ private val chromeFadeAnimationSpec = tween<Float>(150)
  * variable-font file per style (upright/italic); [FontVariation.weight] picks the specific weight
  * out of it rather than needing separate static files per weight.
  */
-private val LoraFontFamily = FontFamily(
-    Font(R.font.lora, weight = FontWeight.Normal, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
-    Font(R.font.lora, weight = FontWeight.Bold, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
-    Font(R.font.lora_italic, weight = FontWeight.Normal, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
-    Font(R.font.lora_italic, weight = FontWeight.Bold, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+private fun variableFont(resId: Int, weight: FontWeight, style: FontStyle) = Font(
+    resId,
+    weight = weight,
+    style = style,
+    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
 )
+
+private val LoraFontFamily = FontFamily(
+    variableFont(R.font.lora, FontWeight.Normal, FontStyle.Normal),
+    variableFont(R.font.lora, FontWeight.Bold, FontStyle.Normal),
+    variableFont(R.font.lora_italic, FontWeight.Normal, FontStyle.Italic),
+    variableFont(R.font.lora_italic, FontWeight.Bold, FontStyle.Italic),
+)
+
 /**
  * The reader's font preference as a real [FontFamily]. Shared so the status strip renders in
  * whatever the reader picked rather than the app's default, instead of each call site repeating
@@ -190,10 +198,10 @@ private fun NovelFontFamily.toFontFamily(): FontFamily = when (this) {
 }
 
 private val NunitoFontFamily = FontFamily(
-    Font(R.font.nunito, weight = FontWeight.Normal, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
-    Font(R.font.nunito, weight = FontWeight.Bold, style = FontStyle.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
-    Font(R.font.nunito_italic, weight = FontWeight.Normal, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
-    Font(R.font.nunito_italic, weight = FontWeight.Bold, style = FontStyle.Italic, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+    variableFont(R.font.nunito, FontWeight.Normal, FontStyle.Normal),
+    variableFont(R.font.nunito, FontWeight.Bold, FontStyle.Normal),
+    variableFont(R.font.nunito_italic, FontWeight.Normal, FontStyle.Italic),
+    variableFont(R.font.nunito_italic, FontWeight.Bold, FontStyle.Italic),
 )
 
 /** One in-chapter search hit: which paragraph, and the offset within that paragraph's text. */
@@ -464,7 +472,11 @@ fun NovelReaderScreen(
                         totalMatches = matches.size,
                         isTruncated = matches.size >= MAX_SEARCH_MATCHES,
                         showMinLengthHint = searchQuery.isNotBlank() && !isSearchable(searchQuery.trim()),
-                        onPrev = { if (matches.isNotEmpty()) currentMatch = (currentMatch - 1 + matches.size) % matches.size },
+                        onPrev = {
+                            if (matches.isNotEmpty()) {
+                                currentMatch = (currentMatch - 1 + matches.size) % matches.size
+                            }
+                        },
                         onNext = { if (matches.isNotEmpty()) currentMatch = (currentMatch + 1) % matches.size },
                         onClose = {
                             searchVisible = false
@@ -476,55 +488,55 @@ fun NovelReaderScreen(
                         contentColor = chromeContentColor,
                     )
                 } else {
-                TopAppBar(
-                    // `windowInsets`, not an outer windowInsetsPadding modifier: this pads the
-                    // bar's *content* below the status bar while its container still paints behind
-                    // it. Padding the whole bar instead left the reading page showing through the
-                    // status bar strip, which is what made the system icons white-on-white on a
-                    // light reading theme. Matches LNReader, where the status bar sits on the
-                    // appbar's own chrome color.
-                    windowInsets = WindowInsets.statusBars,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = chromeBackground),
-                    title = {
-                        // Chapter name over novel name, matching LNReader's title/subtitle top bar
-                        // - the chapter alone left no indication of which novel was being read.
-                        Column {
-                            Text(
-                                text = state.chapter?.name.orEmpty(),
-                                style = MaterialTheme.typography.titleMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            state.mangaTitle?.takeIf { it.isNotBlank() }?.let { novelTitle ->
+                    TopAppBar(
+                        // `windowInsets`, not an outer windowInsetsPadding modifier: this pads the
+                        // bar's *content* below the status bar while its container still paints behind
+                        // it. Padding the whole bar instead left the reading page showing through the
+                        // status bar strip, which is what made the system icons white-on-white on a
+                        // light reading theme. Matches LNReader, where the status bar sits on the
+                        // appbar's own chrome color.
+                        windowInsets = WindowInsets.statusBars,
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = chromeBackground),
+                        title = {
+                            // Chapter name over novel name, matching LNReader's title/subtitle top bar
+                            // - the chapter alone left no indication of which novel was being read.
+                            Column {
                                 Text(
-                                    text = novelTitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    text = state.chapter?.name.orEmpty(),
+                                    style = MaterialTheme.typography.titleMedium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                                state.mangaTitle?.takeIf { it.isNotBlank() }?.let { novelTitle ->
+                                    Text(
+                                        text = novelTitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { searchVisible = true }) {
-                            Icon(Icons.Filled.Search, contentDescription = "Search in chapter")
-                        }
-                        if (onOpenInWebView != null) {
-                            IconButton(onClick = onOpenInWebView) {
-                                Icon(Icons.Filled.Public, contentDescription = null)
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                             }
-                        }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(Icons.Filled.Settings, contentDescription = null)
-                        }
-                    },
-                )
+                        },
+                        actions = {
+                            IconButton(onClick = { searchVisible = true }) {
+                                Icon(Icons.Filled.Search, contentDescription = "Search in chapter")
+                            }
+                            if (onOpenInWebView != null) {
+                                IconButton(onClick = onOpenInWebView) {
+                                    Icon(Icons.Filled.Public, contentDescription = null)
+                                }
+                            }
+                            IconButton(onClick = { showSettings = true }) {
+                                Icon(Icons.Filled.Settings, contentDescription = null)
+                            }
+                        },
+                    )
                 }
             }
 
@@ -552,7 +564,8 @@ fun NovelReaderScreen(
                             progressPercent = progressPercent,
                             backgroundColor = chromeBackground,
                             onProgressChange = { percent ->
-                                val target = ((percent / 100f) * (state.paragraphs.size - 1).coerceAtLeast(0)).roundToInt()
+                                val lastIndex = (state.paragraphs.size - 1).coerceAtLeast(0)
+                                val target = ((percent / 100f) * lastIndex).roundToInt()
                                 scope.launch { listState.scrollToItem(target) }
                             },
                             onInteract = { showControls = true },
@@ -562,7 +575,6 @@ fun NovelReaderScreen(
             } else {
                 Spacer(Modifier.weight(1f))
             }
-
         }
 
         // Bottom chrome, drawn before the chapter list so the list's backdrop dims the
@@ -627,7 +639,6 @@ fun NovelReaderScreen(
                 onClose = { showChapterList = false },
             )
         }
-
     }
 
     if (showSettings) {
@@ -638,9 +649,7 @@ fun NovelReaderScreen(
             NovelReaderSettingsSheet(preferences = preferences)
         }
     }
-
 }
-
 
 /**
  * Chapter picker behind the nav bar's list button: a slide-in panel over the page, painted from
@@ -1004,9 +1013,8 @@ private fun NovelVerticalSeekbar(
     onInteract: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state = remember { SliderState(value = progressPercent.toFloat(), valueRange = 0f..100f) }
+    val state = rememberSliderState(value = progressPercent.toFloat(), trackRange = 0f..100f)
     state.value = progressPercent.toFloat()
-    state.onValueChange = { onProgressChange(it.roundToInt()) }
 
     val interactionSource = remember { MutableInteractionSource() }
     val isDragged by interactionSource.collectIsDraggedAsState()
@@ -1026,6 +1034,7 @@ private fun NovelVerticalSeekbar(
         )
         VerticalSlider(
             state = state,
+            onValueChange = { onProgressChange(it.roundToInt()) },
             interactionSource = interactionSource,
             modifier = Modifier
                 .weight(1f)
@@ -1424,7 +1433,10 @@ private fun ChapterSwitchPill(
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(vertical = MaterialTheme.padding.medium, horizontal = MaterialTheme.padding.large),
+            modifier = Modifier.padding(
+                vertical = MaterialTheme.padding.medium,
+                horizontal = MaterialTheme.padding.large,
+            ),
         )
     }
 }
@@ -1462,10 +1474,12 @@ private fun NovelReaderTabSettings(preferences: NovelReaderPreferences) {
     ) {
         Column {
             Text(text = "Text size: ${fontSize}px", style = MaterialTheme.typography.labelLarge)
+            val minFontSize = NovelReaderPreferences.MIN_FONT_SIZE.toFloat()
+            val maxFontSize = NovelReaderPreferences.MAX_FONT_SIZE.toFloat()
             Slider(
                 value = fontSize.toFloat(),
                 onValueChange = { preferences.fontSize.set(it.toInt()) },
-                valueRange = NovelReaderPreferences.MIN_FONT_SIZE.toFloat()..NovelReaderPreferences.MAX_FONT_SIZE.toFloat(),
+                valueRange = minFontSize..maxFontSize,
                 steps = NovelReaderPreferences.MAX_FONT_SIZE - NovelReaderPreferences.MIN_FONT_SIZE - 1,
             )
         }
@@ -1650,11 +1664,12 @@ private fun NovelGeneralTabSettings(preferences: NovelReaderPreferences) {
             onCheckedChanged = { preferences.autoScroll.set(it) },
         )
         if (autoScroll) {
+            val minSpeed = NovelReaderPreferences.MIN_AUTO_SCROLL_SPEED.toFloat()
+            val maxSpeed = NovelReaderPreferences.MAX_AUTO_SCROLL_SPEED.toFloat()
             Slider(
                 value = autoScrollSpeed.toFloat(),
                 onValueChange = { preferences.autoScrollSpeed.set(it.toInt()) },
-                valueRange = NovelReaderPreferences.MIN_AUTO_SCROLL_SPEED.toFloat()..
-                    NovelReaderPreferences.MAX_AUTO_SCROLL_SPEED.toFloat(),
+                valueRange = minSpeed..maxSpeed,
                 steps = NovelReaderPreferences.MAX_AUTO_SCROLL_SPEED - NovelReaderPreferences.MIN_AUTO_SCROLL_SPEED - 1,
                 modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
             )

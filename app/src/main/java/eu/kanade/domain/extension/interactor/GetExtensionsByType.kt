@@ -1,5 +1,6 @@
 package eu.kanade.domain.extension.interactor
 
+import dev.zacsweers.metro.Inject
 import eu.kanade.domain.extension.model.Extensions
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
@@ -7,36 +8,36 @@ import eu.kanade.tachiyomi.extension.model.Extension
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
+@Inject
 class GetExtensionsByType(
     private val preferences: SourcePreferences,
     private val extensionManager: ExtensionManager,
 ) {
 
     fun subscribe(): Flow<Extensions> {
-        val showNsfwSources = preferences.showNsfwSource.get()
+        val enabledContentWarnings = preferences.enabledContentWarnings.get()
 
         return combine(
             preferences.enabledLanguages.changes(),
-            extensionManager.installedExtensionsFlow,
-            extensionManager.untrustedExtensionsFlow,
+            extensionManager.loadedExtensionsFlow,
+            extensionManager.notLoadedExtensionsFlow,
             extensionManager.availableExtensionsFlow,
-        ) { enabledLanguages, _installed, _untrusted, _available ->
-            val (updates, installed) = _installed
-                .filter { (showNsfwSources || !it.isNsfw) }
+        ) { enabledLanguages, _loaded, _notLoaded, _available ->
+            val (updates, loaded) = _loaded
                 .sortedWith(
-                    compareBy<Extension.Installed> { !it.isObsolete }
+                    compareBy<Extension.Loaded> { !it.isObsolete }
                         .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name },
                 )
                 .partition { it.hasUpdate }
 
-            val untrusted = _untrusted
+            val notLoaded = _notLoaded
                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
             val available = _available
                 .filter { extension ->
-                    _installed.none { it.pkgName == extension.pkgName } &&
-                        _untrusted.none { it.pkgName == extension.pkgName } &&
-                        (showNsfwSources || !extension.isNsfw)
+                    _loaded.none { it.pkgName == extension.pkgName } &&
+                        _notLoaded.none { it.pkgName == extension.pkgName } &&
+                        extension.contentWarning in enabledContentWarnings
                 }
                 .flatMap { ext ->
                     ext.sources.filter { it.lang in enabledLanguages }
@@ -51,7 +52,7 @@ class GetExtensionsByType(
                 }
                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
-            Extensions(updates, installed, available, untrusted)
+            Extensions(updates, loaded, available, notLoaded)
         }
     }
 }

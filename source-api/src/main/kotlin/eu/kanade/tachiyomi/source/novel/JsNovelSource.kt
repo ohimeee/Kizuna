@@ -126,7 +126,9 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
             val api = engine.get(SOURCE_GLOBAL, SourcePluginApi::class.java)
             val selections = metadata.filters.mapIndexedNotNull { index, def ->
                 val filter = filters.getOrNull(index) as? NovelSelectFilter ?: return@mapIndexedNotNull null
-                val value = filter.optionValues.getOrNull(filter.state)?.takeIf { it.isNotEmpty() } ?: return@mapIndexedNotNull null
+                val value =
+                    filter.optionValues.getOrNull(filter.state)?.takeIf { it.isNotEmpty() }
+                        ?: return@mapIndexedNotNull null
                 def.id to value
             }.toMap()
             parseListing(api.searchNovels(query, page, Json.encodeToString(selections)))

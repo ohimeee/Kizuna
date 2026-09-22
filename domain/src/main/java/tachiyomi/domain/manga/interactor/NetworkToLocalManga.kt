@@ -1,10 +1,12 @@
 package tachiyomi.domain.manga.interactor
 
+import dev.zacsweers.metro.Inject
 import eu.kanade.tachiyomi.source.SourceContentType
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 
+@Inject
 class NetworkToLocalManga(
     private val mangaRepository: MangaRepository,
     private val sourceManager: SourceManager,
@@ -15,7 +17,7 @@ class NetworkToLocalManga(
     }
 
     suspend operator fun invoke(manga: List<Manga>): List<Manga> {
-        return mangaRepository.insertNetworkManga(manga.map(::applyDefaultChapterSort))
+        return mangaRepository.insertNetworkManga(manga.map { applyDefaultChapterSort(it) })
     }
 
     /**
@@ -28,7 +30,7 @@ class NetworkToLocalManga(
      * ever writes `chapterFlags` on a brand-new row (`WHERE NOT EXISTS`), so this never overwrites
      * an existing user's own sort choice on a manga/novel already in the library.
      */
-    private fun applyDefaultChapterSort(manga: Manga): Manga {
+    private suspend fun applyDefaultChapterSort(manga: Manga): Manga {
         val isNovel = sourceManager.get(manga.source)?.contentType == SourceContentType.NOVEL
         if (!isNovel) return manga
         return manga.copy(chapterFlags = manga.chapterFlags or Manga.CHAPTER_SORT_ASC)

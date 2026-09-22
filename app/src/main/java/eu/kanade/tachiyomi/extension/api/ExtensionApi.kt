@@ -1,35 +1,36 @@
 package eu.kanade.tachiyomi.extension.api
 
-import android.content.Context
+import dev.zacsweers.metro.AppScope
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import eu.kanade.tachiyomi.extension.model.Extension
-import eu.kanade.tachiyomi.extension.model.LoadResult
-import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import mihon.domain.extension.interactor.UpdateExtensionStores
 import mihon.domain.extension.repository.ExtensionStoreRepository
 import tachiyomi.core.common.util.lang.withIOContext
-import uy.kohesive.injekt.injectLazy
 
-internal class ExtensionApi {
-
-    private val repository: ExtensionStoreRepository by injectLazy()
-
-    private val updateExtensionStores: UpdateExtensionStores by injectLazy()
+@Inject
+@SingleIn(AppScope::class)
+class ExtensionApi(
+    private val repository: ExtensionStoreRepository,
+    private val updateExtensionStores: UpdateExtensionStores,
+    private val extensionUpdateNotifier: ExtensionUpdateNotifier,
+) {
 
     suspend fun findExtensions(): List<Extension.Available> {
         return withIOContext { repository.fetchExtensions() }
     }
 
-    suspend fun checkForUpdates(context: Context) {
+    /**
+     * @param loadedExtensions Extensions already loaded by [eu.kanade.tachiyomi.extension.ExtensionManager].
+     * Only their versions are read, so there's nothing to gain from loading them a second time.
+     */
+    suspend fun checkForUpdates(loadedExtensions: List<Extension.Loaded>) {
         updateExtensionStores()
 
         val extensions = findExtensions()
 
-        val installedExtensions = ExtensionLoader.loadExtensions(context)
-            .filterIsInstance<LoadResult.Success>()
-            .map { it.extension }
-
-        val extensionsWithUpdate = mutableListOf<Extension.Installed>()
-        for (installedExt in installedExtensions) {
+        val extensionsWithUpdate = mutableListOf<Extension.Loaded>()
+        for (installedExt in loadedExtensions) {
             val pkgName = installedExt.pkgName
             val availableExt = extensions.find { it.pkgName == pkgName } ?: continue
             val hasUpdatedVer = availableExt.versionCode > installedExt.versionCode
@@ -41,7 +42,7 @@ internal class ExtensionApi {
         }
 
         if (extensionsWithUpdate.isNotEmpty()) {
-            ExtensionUpdateNotifier(context).promptUpdates(extensionsWithUpdate.map { it.name })
+            extensionUpdateNotifier.promptUpdates(extensionsWithUpdate.map { it.name })
         }
     }
 }

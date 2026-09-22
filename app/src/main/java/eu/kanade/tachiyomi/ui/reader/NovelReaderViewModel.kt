@@ -1,9 +1,14 @@
 package eu.kanade.tachiyomi.ui.reader
 
-import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.zacsweers.metro.AppScope
+import dev.zacsweers.metro.ContributesIntoMap
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.binding
+import dev.zacsweers.metrox.viewmodel.ViewModelKey
 import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.interactor.TrackChapter
@@ -32,8 +37,6 @@ import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.util.Date
 
 /**
@@ -43,16 +46,20 @@ import java.util.Date
  * [eu.kanade.tachiyomi.source.model.Page]s. Reading progress reuses `lastPageRead` as a paragraph
  * index — no schema change needed to share the database with image content.
  */
-class NovelReaderViewModel @JvmOverloads constructor(
-    private val sourceManager: SourceManager = Injekt.get(),
-    private val getManga: GetManga = Injekt.get(),
-    private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
-    private val updateChapter: UpdateChapter = Injekt.get(),
-    private val upsertHistory: UpsertHistory = Injekt.get(),
-    private val downloadManager: DownloadManager = Injekt.get(),
-    private val getIncognitoState: GetIncognitoState = Injekt.get(),
-    private val trackPreferences: TrackPreferences = Injekt.get(),
-    private val trackChapter: TrackChapter = Injekt.get(),
+@Inject
+@ViewModelKey
+@ContributesIntoMap(AppScope::class, binding = binding<ViewModel>())
+class NovelReaderViewModel(
+    private val context: Context,
+    private val sourceManager: SourceManager,
+    private val getManga: GetManga,
+    private val getChaptersByMangaId: GetChaptersByMangaId,
+    private val updateChapter: UpdateChapter,
+    private val upsertHistory: UpsertHistory,
+    private val downloadManager: DownloadManager,
+    private val getIncognitoState: GetIncognitoState,
+    private val trackPreferences: TrackPreferences,
+    private val trackChapter: TrackChapter,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -63,7 +70,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
     private var chapterList: List<Chapter> = emptyList()
     private var chapterReadStartTime: Long? = null
     private var initialized = false
-    private val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
+    private var incognitoMode: Boolean = false
 
     // NovelReaderActivity is launchMode="singleTask", so re-tapping a different chapter (e.g.
     // spamming entries in History) while a reader is already open reuses the SAME Activity/
@@ -113,6 +120,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
             val source = sourceManager.get(manga.source) as? NovelSource
                 ?: error("Source ${manga.source} is not a novel source")
             this.source = source
+            incognitoMode = getIncognitoState.await(manga.source)
 
             chapterList = getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true)
                 .sortedWith(getChapterSort(manga, sortDescending = false))
@@ -260,7 +268,6 @@ class NovelReaderViewModel @JvmOverloads constructor(
         if (!trackPreferences.autoUpdateTrack.get()) return
 
         val manga = manga ?: return
-        val context = Injekt.get<Application>()
 
         viewModelScope.launchNonCancellable {
             trackChapter.await(context, manga.id, chapter.chapterNumber)
@@ -353,7 +360,7 @@ class NovelReaderViewModel @JvmOverloads constructor(
         val current = state.value.chapter ?: return
         val index = chapterList.indexOfFirst { it.id == current.id }
         val target = chapterList.getOrNull(index + offset) ?: return
-        val source = manga?.let { sourceManager.get(it.source) as? NovelSource } ?: return
+        val source = this.source ?: return
 
         // Only the end-of-chapter pill passes markCurrentRead - it sits after the last paragraph,
         // so reaching it means the chapter was read to the end, and the scroll-driven progress

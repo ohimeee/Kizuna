@@ -29,9 +29,9 @@ import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import mihon.app.di.AppGraph
+import mihon.core.metro.metroGraph
 import tachiyomi.presentation.core.util.collectAsState
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /**
  * Reader activity for [eu.kanade.tachiyomi.source.NovelSource] chapters. A separate, pure-Compose
@@ -50,8 +50,9 @@ class NovelReaderActivity : BaseActivity() {
         }
     }
 
-    private val viewModel by viewModels<NovelReaderViewModel>()
-    private val preferences = Injekt.get<NovelReaderPreferences>()
+    private val graph: AppGraph by lazy { metroGraph() }
+    private val viewModel by viewModels<NovelReaderViewModel> { graph.viewModelFactory }
+    private val preferences: NovelReaderPreferences by lazy { graph.novelReaderPreferences }
 
     private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
 

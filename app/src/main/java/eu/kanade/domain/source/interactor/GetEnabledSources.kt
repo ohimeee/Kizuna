@@ -1,5 +1,6 @@
 package eu.kanade.domain.source.interactor
 
+import dev.zacsweers.metro.Inject
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.source.service.SourcePreferences
 import kotlinx.coroutines.flow.Flow
@@ -10,13 +11,12 @@ import tachiyomi.domain.source.model.Pins
 import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.source.local.isLocal
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
+@Inject
 class GetEnabledSources(
     private val repository: SourceRepository,
     private val preferences: SourcePreferences,
-    private val basePreferences: BasePreferences = Injekt.get(),
+    private val basePreferences: BasePreferences,
 ) {
 
     fun subscribe(): Flow<List<Source>> {

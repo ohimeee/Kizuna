@@ -17,12 +17,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
 import kotlinx.coroutines.launch
+import mihon.app.di.appGraph
 import tachiyomi.domain.entrylink.interactor.GetLinkedEntry
 import tachiyomi.domain.entrylink.interactor.LinkEntries
 import tachiyomi.domain.entrylink.interactor.UnlinkEntries
@@ -32,8 +34,6 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /**
  * Lets the user bond [manga] to another library entry (its comic/novel counterpart), or unlink
@@ -48,10 +48,11 @@ class LinkEntryScreen(private val manga: Manga) : Screen() {
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
 
-        val getLinkedEntry = remember { Injekt.get<GetLinkedEntry>() }
-        val linkEntries = remember { Injekt.get<LinkEntries>() }
-        val unlinkEntries = remember { Injekt.get<UnlinkEntries>() }
-        val getLibraryManga = remember { Injekt.get<GetLibraryManga>() }
+        val context = LocalContext.current
+        val getLinkedEntry = remember { context.appGraph.getLinkedEntry }
+        val linkEntries = remember { context.appGraph.linkEntries }
+        val unlinkEntries = remember { context.appGraph.unlinkEntries }
+        val getLibraryManga = remember { context.appGraph.getLibraryManga }
 
         var isLoading by remember { mutableStateOf(true) }
         var linkedManga by remember { mutableStateOf<Manga?>(null) }

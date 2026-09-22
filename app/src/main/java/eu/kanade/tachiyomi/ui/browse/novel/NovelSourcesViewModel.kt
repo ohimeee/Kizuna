@@ -1,24 +1,36 @@
 package eu.kanade.tachiyomi.ui.browse.novel
 
-import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.Immutable
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.zacsweers.metro.AppScope
+import dev.zacsweers.metro.ContributesIntoMap
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.binding
+import dev.zacsweers.metrox.viewmodel.ViewModelKey
 import eu.kanade.tachiyomi.source.novel.JsNovelSource
 import eu.kanade.tachiyomi.source.novel.NovelSourceCatalog
 import eu.kanade.tachiyomi.source.novel.NovelSourceCatalogEntry
 import eu.kanade.tachiyomi.source.novel.NovelSourceInstaller
 import eu.kanade.tachiyomi.source.novel.NovelSourceLoader
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import logcat.LogPriority
-import mihon.core.viewmodel.StateViewModel
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
+@Inject
+@ViewModelKey
+@ContributesIntoMap(AppScope::class, binding = binding<ViewModel>())
 class NovelSourcesViewModel(
-    private val context: Application = Injekt.get(),
-) : StateViewModel<NovelSourcesViewModel.State>(State()) {
+    private val context: Context,
+) : ViewModel() {
+
+    private val mutableState = MutableStateFlow(State())
+    val state: StateFlow<State> = mutableState.asStateFlow()
 
     init {
         refresh()

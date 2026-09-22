@@ -42,6 +42,10 @@
     java.lang.Object readResolve();
 }
 
+# Provided by the OEM at runtime when supported
+-dontwarn androidx.window.extensions.**
+-dontwarn androidx.window.sidecar.**
+
 ##---------------Begin: proguard configuration for RxJava 1.x  ----------
 -dontwarn sun.misc.**
 
@@ -97,3 +101,12 @@
 # Firebase
 -keep class com.google.firebase.installations.** { *; }
 -keep interface com.google.firebase.installations.** { *; }
+
+# KotlinX Datetime
+-keep,allowoptimization class kotlinx.datetime.** { public protected *; }
+
+# Methods called by Shizuku only
+-keepclassmembers class mihon.app.shizuku.ShellInterface {
+    public <init>();
+    public void destroy();
+}

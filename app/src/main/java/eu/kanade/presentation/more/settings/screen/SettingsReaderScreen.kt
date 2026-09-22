@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.widget.BasePreferenceWidget
@@ -28,12 +29,11 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.util.system.hasDisplayCutout
+import mihon.app.di.appGraph
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.text.NumberFormat
 import kotlin.math.roundToInt
 
@@ -45,8 +45,9 @@ object SettingsReaderScreen : SearchableSettings {
 
     @Composable
     override fun getPreferences(): List<Preference> {
-        val readerPref = remember { Injekt.get<ReaderPreferences>() }
-        val novelReaderPref = remember { Injekt.get<NovelReaderPreferences>() }
+        val context = LocalContext.current
+        val readerPref = remember { context.appGraph.readerPreferences }
+        val novelReaderPref = remember { context.appGraph.novelReaderPreferences }
 
         // Manga/manhwa/manhua reader settings below are Mihon's own and stay untouched by this
         // tab switcher - only which group of settings is SHOWN toggles, nothing about how either
@@ -146,6 +147,8 @@ object SettingsReaderScreen : SearchableSettings {
 
         val lineSpacingPref = novelReaderPreferences.lineSpacing
         val lineSpacing by lineSpacingPref.collectAsState()
+        val minLineSpacing = (NovelReaderPreferences.MIN_LINE_SPACING * 10).roundToInt()
+        val maxLineSpacing = (NovelReaderPreferences.MAX_LINE_SPACING * 10).roundToInt()
 
         val paddingPref = novelReaderPreferences.contentPadding
         val padding by paddingPref.collectAsState()
@@ -172,8 +175,7 @@ object SettingsReaderScreen : SearchableSettings {
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = (lineSpacing * 10).roundToInt(),
-                    valueRange = (NovelReaderPreferences.MIN_LINE_SPACING * 10).roundToInt()..
-                        (NovelReaderPreferences.MAX_LINE_SPACING * 10).roundToInt(),
+                    valueRange = minLineSpacing..maxLineSpacing,
                     title = "Line height",
                     valueString = "${"%.1f".format(lineSpacing)}x",
                     onValueChanged = { lineSpacingPref.set(it / 10f) },
@@ -200,6 +202,8 @@ object SettingsReaderScreen : SearchableSettings {
 
         val autoScrollSpeedPref = novelReaderPreferences.autoScrollSpeed
         val autoScrollSpeed by autoScrollSpeedPref.collectAsState()
+        val minAutoScrollSpeed = NovelReaderPreferences.MIN_AUTO_SCROLL_SPEED
+        val maxAutoScrollSpeed = NovelReaderPreferences.MAX_AUTO_SCROLL_SPEED
 
         return Preference.PreferenceGroup(
             title = "General",
@@ -240,8 +244,7 @@ object SettingsReaderScreen : SearchableSettings {
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = autoScrollSpeed,
-                    valueRange = NovelReaderPreferences.MIN_AUTO_SCROLL_SPEED..
-                        NovelReaderPreferences.MAX_AUTO_SCROLL_SPEED,
+                    valueRange = minAutoScrollSpeed..maxAutoScrollSpeed,
                     title = "Auto-scroll speed",
                     enabled = autoScroll,
                     onValueChanged = { autoScrollSpeedPref.set(it) },

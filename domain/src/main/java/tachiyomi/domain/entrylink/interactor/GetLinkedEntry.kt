@@ -1,5 +1,6 @@
 package tachiyomi.domain.entrylink.interactor
 
+import dev.zacsweers.metro.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import logcat.LogPriority
@@ -9,6 +10,7 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 
 /** Resolves the manga linked to [entryId] (its comic/novel counterpart), if any. */
+@Inject
 class GetLinkedEntry(
     private val repository: EntryLinkRepository,
     private val getManga: GetManga,

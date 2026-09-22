@@ -10,14 +10,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.base.ContentModeFilter
+import mihon.app.di.appGraph
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /** Icon + label for a [ContentModeFilter] value, shared by every screen that displays the mode. */
 fun ContentModeFilter.iconAndTitleRes(): Pair<ImageVector, StringResource> = when (this) {
@@ -34,7 +34,8 @@ fun ContentModeFilter.iconAndTitleRes(): Pair<ImageVector, StringResource> = whe
  */
 @Composable
 fun contentModeAction(): AppBar.Action {
-    val preference = remember { Injekt.get<BasePreferences>().contentMode }
+    val context = LocalContext.current
+    val preference = remember { context.appGraph.basePreferences.contentMode }
     var mode by preference.asState(rememberCoroutineScope())
 
     val (icon, titleRes) = mode.iconAndTitleRes()

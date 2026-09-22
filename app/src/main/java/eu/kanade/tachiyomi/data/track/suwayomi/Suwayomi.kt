@@ -13,7 +13,7 @@ import tachiyomi.domain.track.model.Track as DomainTrack
 
 class Suwayomi(id: Long) : BaseTracker(id, "Suwayomi"), EnhancedTracker {
 
-    val api by lazy { SuwayomiApi(id) }
+    val api by lazy { SuwayomiApi(id, appGraph.sourceManager) }
 
     override fun getLogo() = R.drawable.brand_suwayomi
 
@@ -87,7 +87,7 @@ class Suwayomi(id: Long) : BaseTracker(id, "Suwayomi"), EnhancedTracker {
     override suspend fun match(manga: DomainManga): TrackSearch? =
         try {
             api.getTrackSearch(manga.url.getMangaId())
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
 
@@ -108,4 +108,6 @@ class Suwayomi(id: Long) : BaseTracker(id, "Suwayomi"), EnhancedTracker {
         val preferences = api.sourcePreferences()
         return preferences.getBoolean(TRACKER_DELETE_KEY, TRACKER_DELETE_DEFAULT)
     }
+
+    override suspend fun updateUserConfig() = Unit
 }

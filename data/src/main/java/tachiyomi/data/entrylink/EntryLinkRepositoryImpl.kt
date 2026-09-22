@@ -1,11 +1,18 @@
 package tachiyomi.data.entrylink
 
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import dev.zacsweers.metro.AppScope
+import dev.zacsweers.metro.ContributesBinding
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.data.Database
 import tachiyomi.data.subscribeToOneOrNull
 import tachiyomi.domain.entrylink.repository.EntryLinkRepository
 
+@Inject
+@SingleIn(AppScope::class)
+@ContributesBinding(AppScope::class)
 class EntryLinkRepositoryImpl(
     private val database: Database,
 ) : EntryLinkRepository {

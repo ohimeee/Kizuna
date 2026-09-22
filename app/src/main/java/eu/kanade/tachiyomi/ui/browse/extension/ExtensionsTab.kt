@@ -5,12 +5,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.browse.ExtensionScreen
@@ -32,12 +32,12 @@ fun extensionsTab(
     val navigator = LocalNavigator.currentOrThrow
     val context = LocalContext.current
 
-    val state by extensionsViewModel.state.collectAsState()
-    var privateExtensionToUninstall by remember { mutableStateOf<Extension?>(null) }
+    val updatesCount by extensionsViewModel.updatesCount.collectAsStateWithLifecycle()
+    var privateExtensionToUninstall by remember { mutableStateOf<Extension.Installed?>(null) }
 
     return TabContent(
         titleRes = MR.strings.label_extensions,
-        badgeNumber = state.updates.takeIf { it > 0 },
+        badgeNumber = updatesCount.takeIf { it > 0 },
         searchEnabled = true,
         actions = listOf(
             AppBar.OverflowAction(
@@ -50,6 +50,8 @@ fun extensionsTab(
             ),
         ),
         content = { contentPadding, _ ->
+            val state by extensionsViewModel.state.collectAsStateWithLifecycle()
+
             BackHandler(enabled = state.searchQuery != null) {
                 extensionsViewModel.search(null)
             }
@@ -61,7 +63,7 @@ fun extensionsTab(
                 onLongClickItem = { extension ->
                     when (extension) {
                         is Extension.Available -> extensionsViewModel.installExtension(extension)
-                        else -> {
+                        is Extension.Installed -> {
                             if (context.isPackageInstalled(extension.pkgName)) {
                                 extensionsViewModel.uninstallExtension(extension)
                             } else {
@@ -89,8 +91,6 @@ fun extensionsTab(
                 onUninstallExtension = { extensionsViewModel.uninstallExtension(it) },
                 onUpdateExtension = extensionsViewModel::updateExtension,
                 onRefresh = extensionsViewModel::findAvailableExtensions,
-                onContentTypeFilterChange = extensionsViewModel::setContentTypeFilter,
-                onGoToNovelSources = { BrowseTab.showNovelSources() },
             )
 
             privateExtensionToUninstall?.let { extension ->

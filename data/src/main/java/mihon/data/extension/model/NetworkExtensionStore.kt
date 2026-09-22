@@ -1,14 +1,15 @@
 package mihon.data.extension.model
 
 import android.annotation.SuppressLint
+import eu.kanade.tachiyomi.source.SourceContentType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNames
 import kotlinx.serialization.protobuf.ProtoNumber
 import mihon.data.extension.model.NetworkExtensionStore.ContentWarning
 import mihon.data.extension.model.NetworkExtensionStore.ExtensionList
 import mihon.domain.extension.model.ExtensionStore
-import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.extension.model.Extension as TachiyomiExtension
+import mihon.domain.extension.model.ContentWarning as DomainContentWarning
 
 @SuppressLint("UnsafeOptInUsageError")
 @Serializable
@@ -106,7 +107,12 @@ fun ExtensionList.toAvailableExtensions(store: ExtensionStore): List<TachiyomiEx
             versionCode = extension.versionCode,
             versionName = extension.versionName,
             lang = if (lang.size == 1) lang.first() else "all",
-            isNsfw = extension.contentWarning >= ContentWarning.MIXED,
+            contentWarning = when (extension.contentWarning) {
+                ContentWarning.SAFE -> DomainContentWarning.SAFE
+                ContentWarning.MIXED -> DomainContentWarning.MIXED
+                ContentWarning.NSFW -> DomainContentWarning.NSFW
+                else -> DomainContentWarning.SAFE
+            },
             sources = extension.sources.map { source ->
                 TachiyomiExtension.Available.Source(
                     id = source.id,

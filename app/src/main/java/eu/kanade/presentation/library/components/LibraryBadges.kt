@@ -3,22 +3,25 @@ package eu.kanade.presentation.library.components
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.tachiyomi.source.SourceContentType
+import mihon.app.di.appGraph
+import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.rounded.Folder
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.presentation.core.components.Badge
 import tachiyomi.presentation.core.components.BadgeGroup
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 @Composable
 internal fun DownloadsBadge(count: Int) {
@@ -45,7 +48,7 @@ internal fun LanguageBadge(
 ) {
     if (isLocal) {
         Badge(
-            imageVector = Icons.Outlined.Folder,
+            imageVector = MaterialSymbols.Rounded.Folder,
             color = MaterialTheme.colorScheme.tertiary,
             iconColor = MaterialTheme.colorScheme.onTertiary,
         )
@@ -58,12 +61,18 @@ internal fun LanguageBadge(
     }
 }
 
-/** Shared by any list/grid item that wants to show [ContentTypeBadge] - one Injekt/SourceManager
+/** Shared by any list/grid item that wants to show [ContentTypeBadge] - one graph/SourceManager
  * lookup pattern instead of repeating it at every call site. */
 @Composable
 internal fun rememberIsNovelSource(sourceId: Long): Boolean {
-    val sourceManager = remember { Injekt.get<SourceManager>() }
-    return remember(sourceId) { sourceManager.get(sourceId)?.contentType == SourceContentType.NOVEL }
+    val context = LocalContext.current
+    val sourceManager = remember { context.appGraph.sourceManager }
+    // SourceManager.get() is suspend, so this resolves off-composition and defaults to false
+    // (the image badge) for the frame or two before the lookup lands.
+    val isNovel by produceState(false, sourceId) {
+        value = sourceManager.get(sourceId)?.contentType == SourceContentType.NOVEL
+    }
+    return isNovel
 }
 
 /**
