@@ -1,54 +1,43 @@
-// NovelArrow (novelarrow.com) — aggregator/scanlation-style web novel reading site (Next.js).
-// Written independently against Kizuna's NovelSource contract (see docs/novel-sources/README.md).
+// NovelPing (novelping.com) — formerly NovelArrow (novelarrow.com), which now 301s here.
 //
-// robots.txt on this site explicitly disallows ClaudeBot (and other named AI crawlers) site-wide,
-// while allowing normal browsers/generic crawlers everywhere except /api/, /admin/, and account
-// pages. That's a deliberate, informed exception granted by the project owner for this one source
-// - not the default policy for adding sources to Kizuna.
+// The rebrand was a full rewrite, not a reskin: the old site was a Next.js app whose listings
+// were scraped out of server-rendered HTML at /genre/{slug}. NovelPing is a jQuery/Bootstrap app
+// with a different URL scheme, different markup, and a small AJAX API. Every selector below was
+// re-derived from the live site rather than carried over.
 //
-// Selectors verified against real page source (curl with a browser UA):
-// - Listing/search/genre-archive cards all share one markup (confirmed identical across
-//   /novels/latest, /novels/popular, /novels/search, /genre/{slug}): title+href live on
-//   `a:has(h2.truncate)`, cover on `img.site-cover-media-calm[src]`. 1:1 counts confirmed (20/20
-//   on a real listing page).
-// - Novel detail page is React Server Component-streamed - most of it (og:image/description meta,
-//   rating, etc.) only exists as escaped JSON inside <script> pushes, NOT as literal DOM Jsoup can
-//   select. What *is* real, literal DOM (confirmed): `h1` (title), `img.novel-cover-image[src]`
-//   (cover), `a[href^="/author/"]` (author), `.site-reading-copy p` (full untruncated synopsis,
-//   one <p> per paragraph), and genre tag links matching `a[href^="/genre/"][class*=underline-
-//   offset-4]` (exactly 5/5 matched Shadow Slave's real og:keywords genres, distinct from the
-//   site-wide genre nav grid which uses different classes/no underline-offset-4). Status has no
-//   stable class either, but the little status-badge SVG's id is literally
-//   `{status-word}-title-{reactAutoId}` (e.g. `ongoing-title-_R_9iaqnpfiv5mivb_`) - regex out the
-//   word prefix rather than relying on the volatile React-generated suffix.
-// - Full chapter list is NOT in server HTML at all (detail page only ever ships chapter 1 + the
-//   ~29 most recent - confirmed on Shadow Slave: chapters 1-30 and 3134 present, nothing between,
-//   out of 3134 total). The real list/content load via `/api-web/novels/{novelId}/chapters` and
-//   `/api-web/novels/{novelId}/chapters/{chapterId}` - a route family confirmed live (3134/3134
-//   chapters returned in one call) and *not* covered by robots.txt's `Disallow: /api/` (that's a
-//   literal prefix match against `/api/`; `/api-web/` is a distinct path, not a subpath of it).
-//   Endpoint shape cross-checked against LNReader's public, independently-written plugin
-//   (github.com/LNReader/lnreader-plugins, plugins/english/novelarrow.ts) as a reference that this
-//   route family is real and already used in the wild - Kizuna's implementation below is its own,
-//   written against the JsNovelSource bridge functions, not a port of that file.
-// - Genre archive supports real, confirmed pagination (`?page=N`, 20/page, distinct results per
-//   page). Sort/language enum values below aren't guessed - pulled straight from the site's own
-//   client bundle (the archive toolbar's sort/language dropdown component, chunk
-//   `app/(site)/genre/[slug]/page-*.js`: `[{value:"LASTEST",label:"Last updated"},{value:"NEW",
-//   label:"Recently added"},{value:"ALL_TIME",label:"Top (most viewed)"},{value:"POPULAR",
-//   label:"Popular this week"},{value:"RATING",label:"Top rated"},{value:"CHAPTERS",label:"Most
-//   chapters"}]` and `[{value:"ALL",...},{value:"EN",...},{value:"CN",...}]`), then each value
-//   confirmed live to actually change the result set (not silently ignored/falling back).
+// `id` deliberately stays "novelarrow" even though the site is now NovelPing — the id is the
+// stable key the library and download manager store per entry, so changing it would orphan every
+// existing NovelArrow entry into a second, unrelated source.
+//
+// Layout of the site, as used here:
+//   * Site-wide listings are plain pages: /sort/hot, /sort/popular, /sort/updates, /sort/complete,
+//     each paginated with ?page=N at 20 novels per page.
+//   * Genre listings are /novelping-genres/{slug}, with sort as a ?sort= query param and status as
+//     an extra path segment (/ongoing, /completed). The site's own filter <select>s are pure
+//     navigation - each <option value> is the destination URL (see /js/list-filter.js) - so the
+//     filter values below are exactly what the site itself links to, not guesses.
+//   * A jQuery AJAX API lives at /ajax (base declared inline on every page as `ajaxUrl`):
+//       - /ajax/chapter-archive?novelId={slug}  full chapter list, every chapter in ONE response
+//       - /ajax/search-novel?keyword={q}        keyword search
+//     Both return HTML fragments, not JSON.
+//
+// The chapter archive is the important one: the /book/{slug} page itself only renders a 30-chapter
+// preview (and ignores ?page=), so scraping the book page would silently cap every novel at 30
+// chapters. The archive endpoint returns the lot - verified at 3195 chapters for shadow-slave in a
+// single request - and needs no auth or crawler token despite the site wrapping its own calls in a
+// `withCrawlerAccess()` helper.
 
 Register(JSON.stringify({
   id: "novelarrow",
-  name: "NovelArrow",
+  name: "NovelPing",
   lang: "en",
-  baseUrl: "https://novelarrow.com",
-  version: "1.1.3",
+  baseUrl: "https://novelping.com",
+  version: "2.0.0",
   supportsLatest: true,
-  iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelarrow.com",
-  // Slugs scraped from the real site-wide genre nav (/genre/{slug} links on the homepage).
+  // The site's favicon is an .ico, which doesn't render in the sources list; its apple-touch-icon
+  // is a real PNG at the same origin.
+  iconUrl: "https://novelping.com/apple-touch-icon.png",
+  // Slugs taken from the site-wide genre nav (/novelping-genres/{slug} links on the homepage).
   filters: [
     {
       id: "genre",
@@ -57,7 +46,6 @@ Register(JSON.stringify({
         { label: "Action", value: "action" },
         { label: "Adult", value: "adult" },
         { label: "Adventure", value: "adventure" },
-        { label: "Anime & Comics", value: "anime-&-comics" },
         { label: "Comedy", value: "comedy" },
         { label: "Drama", value: "drama" },
         { label: "Eastern", value: "eastern" },
@@ -71,7 +59,6 @@ Register(JSON.stringify({
         { label: "Horror", value: "horror" },
         { label: "Isekai", value: "isekai" },
         { label: "Josei", value: "josei" },
-        { label: "LGBT+", value: "lgbt+" },
         { label: "LitRPG", value: "litrpg" },
         { label: "Magic", value: "magic" },
         { label: "Magical Realism", value: "magical-realism" },
@@ -81,7 +68,6 @@ Register(JSON.stringify({
         { label: "Military", value: "military" },
         { label: "Modern Life", value: "modern-life" },
         { label: "Mystery", value: "mystery" },
-        { label: "Other", value: "other" },
         { label: "Psychological", value: "psychological" },
         { label: "Realistic", value: "realistic" },
         { label: "Reincarnation", value: "reincarnation" },
@@ -111,179 +97,169 @@ Register(JSON.stringify({
       ],
     },
     {
+      // Values are the site's own ?sort= codes, including its "LASTEST" spelling - that is the
+      // literal parameter the site sends, so it is not a typo to fix here.
       id: "sort",
-      name: "Sort Results By",
+      name: "Sort by",
       options: [
+        { label: "Popular this week", value: "POPULAR_WEEK" },
         { label: "Last updated", value: "LASTEST" },
         { label: "Recently added", value: "NEW" },
         { label: "Top (most viewed)", value: "ALL_TIME" },
-        { label: "Popular this week", value: "POPULAR" },
         { label: "Top rated", value: "RATING" },
         { label: "Most chapters", value: "CHAPTERS" },
       ],
     },
     {
-      id: "language",
-      name: "Language",
+      // Status is a path segment on genre listings, not a query param.
+      id: "status",
+      name: "Status",
       options: [
-        { label: "English", value: "EN" },
-        { label: "Chinese", value: "CN" },
+        { label: "Ongoing only", value: "ongoing" },
+        { label: "Completed only", value: "completed" },
       ],
     },
   ],
 }));
 
-var BASE_URL = "https://novelarrow.com/";
-var JSON_HEADERS = JSON.stringify({ "Accept": "application/json" });
+var BASE = "https://novelping.com";
+var AJAX = BASE + "/ajax";
 
-function absoluteUrl(url) {
-  if (!url) return url;
-  if (url.indexOf("http") === 0) return url;
-  return BASE_URL.replace(/\/$/, "") + url;
-}
+// Listing cards are `h3.novel-title > a` with an absolute href, and the matching cover is the
+// `img.cover` in the same row. Scoped away from `.list-side` (the "hot novels" sidebar, which is
+// rendered from the same partial) so the title and cover arrays stay index-aligned - they are
+// zipped positionally below, so any extra match in one and not the other would shift every cover
+// onto the wrong novel.
+var LIST_SCOPE = ".list-novel:not(.list-side) ";
+var TITLE_SEL = LIST_SCOPE + "h3.novel-title a";
+var COVER_SEL = LIST_SCOPE + "img.cover";
 
-function novelIdFromUrl(url) {
-  var path = url.split("?")[0].replace(/\/$/, "");
-  return path.split("/").pop();
-}
-
-function parseChapterUrl(url) {
-  var path = url.split("?")[0].replace(/\/$/, "");
-  var parts = path.split("/");
-  return {
-    chapterId: parts[parts.length - 1] || "",
-    novelId: parts[parts.length - 2] || "",
-  };
-}
-
-// Shared by /novels/latest, /novels/popular, /novels/search, and /genre/{slug} - all four render
-// the exact same card markup (confirmed live: 20/20 matching title/cover pairs on a real page).
 function parseListing(html) {
-  var urls = selectAllAttr(html, "a:has(h2.truncate)", "href");
-  var titles = selectAllText(html, "h2.truncate");
-  var covers = selectAllAttr(html, "img.site-cover-media-calm", "src");
+  var urls = selectAllAttr(html, TITLE_SEL, "href");
+  var titles = selectAllText(html, TITLE_SEL);
+  var covers = selectAllAttr(html, COVER_SEL, "src");
 
-  var novels = urls.map(function (url, i) {
-    return {
-      title: titles[i] || "",
-      url: absoluteUrl(url),
-      cover: covers[i] ? absoluteUrl(covers[i]) : null,
-    };
-  }).filter(function (n) { return n.title && n.url; });
+  var novels = [];
+  for (var i = 0; i < urls.length; i++) {
+    var title = (titles[i] || "").replace(/\s+/g, " ").trim();
+    if (!urls[i] || !title) continue;
+    novels.push({ title: title, url: urls[i], cover: covers[i] || "" });
+  }
 
-  return JSON.stringify({
-    novels: novels,
-    hasNextPage: novels.length > 0,
-  });
+  // 20 per page site-wide; a short page means there is nothing after it. Asking for a page past
+  // the end returns an empty list rather than clamping to the last page, so this terminates.
+  return JSON.stringify({ novels: novels, hasNextPage: novels.length >= 20 });
+}
+
+function listingPage(path, page) {
+  var url = BASE + path + (page > 1 ? "?page=" + page : "");
+  return parseListing(Http.get(url, "{}"));
 }
 
 globalThis.source = {
-
   popularNovels: function (page) {
-    return parseListing(Http.get(BASE_URL + "novels/popular?page=" + page, "{}"));
+    return listingPage("/sort/hot", page);
   },
 
   latestNovels: function (page) {
-    return parseListing(Http.get(BASE_URL + "novels/latest?page=" + page, "{}"));
+    return listingPage("/sort/updates", page);
   },
 
-  // The app's filter sheet (genre/sort/language above) always calls searchNovels, never
-  // popularNovels/latestNovels directly - so genre/sort/language browsing (no keyword) is handled
-  // here too.
   searchNovels: function (query, page, filtersJson) {
     var filters = JSON.parse(filtersJson || "{}");
+    var q = (query || "").trim();
 
-    if (query) {
-      var searchUrl = BASE_URL + "novels/search?keyword=" + encodeURIComponent(query) + "&page=" + page;
-      return parseListing(Http.get(searchUrl, "{}"));
+    if (q.length > 0) {
+      // Keyword search is the AJAX endpoint the site's own search box uses. It returns a flat
+      // list of `a.list-group-item` links with no covers and no paging, so one page only.
+      var html = Http.get(AJAX + "/search-novel?keyword=" + encodeURIComponent(q), "{}");
+      var urls = selectAllAttr(html, "a.list-group-item", "href");
+      var titles = selectAllText(html, "a.list-group-item");
+      var results = [];
+      for (var i = 0; i < urls.length; i++) {
+        var t = (titles[i] || "").replace(/\s+/g, " ").trim();
+        if (urls[i] && t) results.push({ title: t, url: urls[i], cover: "" });
+      }
+      return JSON.stringify({ novels: results, hasNextPage: false });
     }
 
-    // No keyword ("Any" or genre/sort/language browsing). IMPORTANT: never fall through to
-    // novels/search with an empty keyword here - confirmed live that returns 0 results, not "no
-    // filter applied" (that was a real bug: picking nothing but "Any" showed an empty list).
-    if (filters.genre) {
-      var url = BASE_URL + "genre/" + encodeURIComponent(filters.genre) + "?page=" + page;
-      if (filters.sort) url += "&sort=" + filters.sort;
-      if (filters.language) url += "&language=" + filters.language;
-      return parseListing(Http.get(url, "{}"));
+    // No keyword: browse by filter. Genre is a path, status an extra path segment, sort a query
+    // param - mirroring exactly what the site's own filter dropdowns navigate to.
+    var path = filters.genre
+      ? "/novelping-genres/" + filters.genre
+      : "/sort/hot";
+
+    if (filters.genre && filters.status) {
+      path += "/" + filters.status;
     }
 
-    // ?sort=/?language= on novels/latest and novels/popular are silently ignored (confirmed live -
-    // every value tested gave byte-identical results), and the ranking page's Weekly/Monthly/
-    // All-Time toggle is client-fetched with no URL param equivalent. But novelarrow.com's own nav
-    // links to several *separately real* /novels/{category} pages - confirmed live each returns a
-    // genuinely distinct top result: /novels/latest, /novels/new, /novels/hot, /novels/popular
-    // (also /novels/complete, /novels/ongoing - status, not sort, not used here). No dedicated
-    // route exists for Top Rated/Most Chapters outside a genre archive (/novels/rating and similar
-    // guesses all hit the same generic empty "Novel List" fallback, not a real category) - those
-    // two still fall back to novels/latest without a genre picked.
-    var SORT_LISTING = {
-      LASTEST: "novels/latest",
-      NEW: "novels/new",
-      ALL_TIME: "novels/popular",
-      POPULAR: "novels/hot",
-    };
-    var listPath = SORT_LISTING[filters.sort] || "novels/latest";
-    return parseListing(Http.get(BASE_URL + listPath + "?page=" + page, "{}"));
+    var params = [];
+    // "Popular this week" is the site's default and has no ?sort= value of its own.
+    if (filters.sort && filters.sort !== "POPULAR_WEEK") {
+      params.push("sort=" + encodeURIComponent(filters.sort));
+    }
+    if (page > 1) params.push("page=" + page);
+
+    var url = BASE + path + (params.length ? "?" + params.join("&") : "");
+    return parseListing(Http.get(url, "{}"));
   },
 
   novelDetails: function (url) {
     var html = Http.get(url, "{}");
-    var statusMatch = html.match(/id="([a-z]+)-title-_R_/);
+
+    var genres = selectAllText(html, "a.meta-chip");
+    var cleanGenres = [];
+    for (var i = 0; i < genres.length; i++) {
+      var g = (genres[i] || "").replace(/\s+/g, " ").trim();
+      if (g) cleanGenres.push(g);
+    }
+
+    // The description block is collapsed behind a "show more" toggle, but the full text is in the
+    // markup either way - `.desc-text` is the inner node, without the toggle button's own label.
+    var description = selectText(html, ".desc-text");
+    if (!description) description = selectText(html, "#novel-description-content");
 
     return JSON.stringify({
-      title: selectText(html, "h1"),
-      cover: selectAttr(html, "img.novel-cover-image", "src") || null,
-      author: selectText(html, "a[href^='/author/']"),
-      description: selectAllText(html, ".site-reading-copy p").join("\n\n"),
-      genres: selectAllText(html, "a[href^='/genre/'][class*=underline-offset-4]"),
-      status: statusMatch ? statusMatch[1] : "",
+      title: (selectText(html, "h1") || "").replace(/\s+/g, " ").trim(),
+      cover: selectAttr(html, "img.cover", "src"),
+      author: (selectText(html, "ul.info-meta li a[href*=/author/]") || "").replace(/\s+/g, " ").trim(),
+      description: (description || "").replace(/[ \t]+/g, " ").trim(),
+      genres: cleanGenres,
+      status: (selectText(html, "ul.info-meta li:contains(Status) a") || "").replace(/\s+/g, " ").trim(),
     });
   },
 
-  // Full list in one call - /api-web/novels/{id}/chapters?sort=asc isn't paginated in practice
-  // (confirmed live: 3134/3134 chapters for Shadow Slave in a single response).
   chapterList: function (novelUrl) {
-    var novelId = novelIdFromUrl(novelUrl);
-    var json = Http.get(BASE_URL + "api-web/novels/" + novelId + "/chapters?sort=asc", JSON_HEADERS);
+    // /book/{slug} -> {slug}. The archive endpoint keys off the slug, which is also what the page
+    // exposes as data-novel-id.
+    var slug = novelUrl.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop();
+    var html = Http.get(AJAX + "/chapter-archive?novelId=" + encodeURIComponent(slug), "{}");
 
-    var data;
-    try { data = JSON.parse(json); } catch (e) { data = null; }
-    var items = (data && data.items) || [];
+    var urls = selectAllAttr(html, "li.chapter-list-item a", "href");
+    var titles = selectAllText(html, "li.chapter-list-item a span.chapter-title");
 
-    return JSON.stringify(items.map(function (item, i) {
-      return {
-        name: item.chapter_name || ("Chapter " + (i + 1)),
-        url: BASE_URL + "chapter/" + novelId + "/" + item.chapter_id,
-        chapterNumber: i + 1,
-      };
-    }));
+    var chapters = [];
+    for (var i = 0; i < urls.length; i++) {
+      if (!urls[i]) continue;
+      var name = (titles[i] || "").replace(/\s+/g, " ").trim();
+      if (!name) name = "Chapter " + (i + 1);
+
+      // Slugs are "chapter-{n}-{title-words}", so the number is reliable when present; fall back
+      // to position for the occasional prologue/extra that isn't numbered.
+      var num = i + 1;
+      var m = urls[i].match(/\/chapter-(\d+)/);
+      if (m) num = parseInt(m[1], 10);
+
+      chapters.push({ name: name, url: urls[i], chapterNumber: num });
+    }
+
+    // Natural reading order, chapter 1 first - JsNovelSource reverses this internally to match
+    // Mihon's newest-first sourceOrder convention.
+    return JSON.stringify(chapters);
   },
 
   chapterContent: function (chapterUrl) {
-    var parsed = parseChapterUrl(chapterUrl);
-    if (!parsed.novelId || !parsed.chapterId) return "";
-
-    var apiUrl = BASE_URL + "api-web/novels/" + parsed.novelId + "/chapters/" + parsed.chapterId;
-    var headers = JSON.stringify({ "Accept": "application/json", "x-track-reading-progress": "false" });
-    var json = Http.get(apiUrl, headers);
-
-    var data;
-    try { data = JSON.parse(json); } catch (e) { return ""; }
-    var info = data && data.item && data.item.chapterInfo;
-    if (!info) return "";
-
-    var body = info.chapter_content || "";
-
-    // Whether chapter_content carries its own title heading is inconsistent per novel (confirmed
-    // live: Shadow Slave's chapters open with "<h4>Chapter 1 Nightmare Begins</h4>", while other
-    // novels' start straight at "<p>"). Prepend it only when absent, so the reader always shows a
-    // chapter title like the other sources do and titled chapters don't end up with it twice.
-    if (info.chapter_name && !/^\s*<h[1-6][\s>]/i.test(body)) {
-      body = "<h4>" + info.chapter_name + "</h4>" + body;
-    }
-
-    return body;
+    var html = Http.get(chapterUrl, "{}");
+    return selectHtml(html, "#chr-content");
   },
-
 };
