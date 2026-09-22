@@ -6,13 +6,12 @@ Mihon's image-based (manga/manhwa/manhua) reading in one app. See [README](READM
 
 ## Commit messages
 
-**Title only. No body. No trailers.**
+**No trailers, ever.**
 
-- One line, that's the whole message. Never add a body or bullet list beneath it.
 - Never add `Co-Authored-By:` — not for Claude, not for anyone.
 - Never add `🤖 Generated with ...` or any other attribution/generation footer.
 
-Write it as an imperative summary of the change, matching the existing log:
+The title is an imperative summary, matching the existing log:
 
 ```
 Add a bottom navigation bar and chapter list to the novel reader
@@ -20,8 +19,10 @@ Fix novel downloads losing their badge and failing permanently
 Bump version to 0.29.0
 ```
 
-If a change genuinely needs more explanation than a title holds, the explanation belongs in the
-code as a comment, or in `docs/` — not in the commit message.
+A body is fine when the change needs one — why it was done, what was tried and rejected, or
+anything a reviewer would otherwise have to reconstruct. Wrap it at 72 characters and keep it
+about the change, not a file-by-file restatement of the diff. Skip it entirely when the title
+already says everything.
 
 ## Before editing the novel reader UI
 
