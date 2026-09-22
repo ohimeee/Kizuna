@@ -24,6 +24,18 @@ anything a reviewer would otherwise have to reconstruct. Wrap it at 72 character
 about the change, not a file-by-file restatement of the diff. Skip it entirely when the title
 already says everything.
 
+## Version bumps
+
+Version lives in [app/build.gradle.kts](app/build.gradle.kts) as `versionName` + `versionCode`.
+
+- **Minor change** (bug fixes, a source plugin update, a UI tweak) — bump the **last** digit:
+  `0.29.0` → `0.29.1`
+- **Major change** (an upstream Mihon merge, a new feature, a schema migration, a dependency or
+  SDK jump) — bump the **middle** digit and reset the last to 0: `0.29.1` → `0.30.0`
+
+`versionCode` always increments by 1, whichever kind of bump it is — Android uses it to decide
+what counts as an update, so it must never go backwards or repeat.
+
 ## Before editing the novel reader UI
 
 Read [docs/novel-reader-ui-notes.md](docs/novel-reader-ui-notes.md) first. It is a regression log,
