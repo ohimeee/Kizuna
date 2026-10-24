@@ -79,6 +79,9 @@ android {
             applicationIdSuffix = ".dev"
             isPseudoLocalesEnabled = true
             resValue("string", "app_name", "Kizuna Debug")
+            // gradle.properties turns the updater on for Kizuna's locally built releases; a debug
+            // install (app.kizuna.dev) must not offer to install the release app over itself
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
         }
         val release = getByName("release") {
             isMinifyEnabled = true
