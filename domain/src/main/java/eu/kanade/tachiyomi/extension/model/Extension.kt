@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.extension.model
 
-import android.graphics.drawable.Drawable
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceContentType
 import mihon.domain.extension.model.ContentWarning
@@ -22,6 +21,30 @@ sealed interface Extension {
      */
     sealed interface Installed : Extension {
         val isShared: Boolean
+
+        /** SHA-256 digests of the certificates its apk is signed with. */
+        val signatures: List<String>
+
+        val hasUpdate: Boolean
+
+        val store: ExtensionStore?
+
+        /**
+         * The newest listing of this extension among the stores whose signing key it's signed with. An
+         * apk from any other store can't replace it, so only these are where its updates come from.
+         */
+        fun findListing(available: Collection<Available>): Available? {
+            return available
+                .filter { it.pkgName == pkgName && it.store.signingKey in signatures }
+                .maxWithOrNull(compareBy<Available> { it.versionCode }.thenBy { it.libVersion })
+        }
+
+        fun findUpdate(available: Collection<Available>): Available? {
+            val installedLibVersion = libVersion
+            return findListing(available)?.takeIf {
+                it.versionCode > versionCode || (installedLibVersion != null && it.libVersion > installedLibVersion)
+            }
+        }
     }
 
     /**
@@ -73,12 +96,12 @@ sealed interface Extension {
         override val lang: String,
         override val contentWarning: ContentWarning,
         override val isShared: Boolean,
+        override val signatures: List<String>,
         val pkgFactory: String?,
         val sources: List<Source>,
-        val icon: Drawable?,
-        val hasUpdate: Boolean = false,
+        override val hasUpdate: Boolean = false,
         val isObsolete: Boolean = false,
-        val store: ExtensionStore? = null,
+        override val store: ExtensionStore? = null,
     ) : Installed {
 
         val contentType: SourceContentType
@@ -96,8 +119,11 @@ sealed interface Extension {
         override val versionCode: Long,
         override val isShared: Boolean,
         override val contentWarning: ContentWarning,
+        override val signatures: List<String>,
         override val libVersion: Double? = null,
         override val lang: String? = null,
+        override val hasUpdate: Boolean = false,
+        override val store: ExtensionStore? = null,
         val reason: Reason,
     ) : Installed {
 

@@ -1,0 +1,30 @@
+CREATE TABLE entry_link(
+    id INTEGER NOT NULL PRIMARY KEY,
+    entry_id_a INTEGER NOT NULL,
+    entry_id_b INTEGER NOT NULL,
+    relation_type TEXT NOT NULL DEFAULT 'adaptation',
+    UNIQUE(entry_id_a, entry_id_b),
+    FOREIGN KEY(entry_id_a) REFERENCES manga (id)
+    ON DELETE CASCADE,
+    FOREIGN KEY(entry_id_b) REFERENCES manga (id)
+    ON DELETE CASCADE
+);
+
+-- Callers are expected to pass entry_id_a < entry_id_b (see EntryLinkRepositoryImpl) so a pair
+-- can't be inserted twice in reversed order. The unique constraint indexes entry_id_a.
+CREATE INDEX entry_link_entry_id_b_index ON entry_link(entry_id_b);
+
+insert:
+INSERT OR IGNORE INTO entry_link(entry_id_a, entry_id_b, relation_type)
+VALUES (:entryIdA, :entryIdB, :relationType);
+
+delete:
+DELETE FROM entry_link
+WHERE (entry_id_a = :entryIdA AND entry_id_b = :entryIdB)
+OR (entry_id_a = :entryIdB AND entry_id_b = :entryIdA);
+
+getLinkedEntryId:
+SELECT CASE WHEN entry_id_a = :entryId THEN entry_id_b ELSE entry_id_a END AS linkedEntryId
+FROM entry_link
+WHERE entry_id_a = :entryId OR entry_id_b = :entryId
+LIMIT 1;

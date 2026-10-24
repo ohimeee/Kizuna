@@ -21,8 +21,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toLocalDateTime
 import logcat.LogPriority
-import tachiyomi.core.common.util.lang.withNonCancellableContext
-import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.storage.service.StorageManager
 import java.time.OffsetDateTime
@@ -42,10 +40,10 @@ class CrashLogUtil(
      * Writes a log file for the Settings > Advanced button and the crash screen, then toasts
      * where it went and opens a share sheet.
      */
-    suspend fun dumpLogs(exception: Throwable? = null) = withNonCancellableContext {
+    suspend fun dumpLogs(exception: Throwable? = null) = withContext(Dispatchers.IO) {
         try {
             val (uri, savedToStorage, fileName) = writeLogFile(exception)
-            withUIContext {
+            withContext(Dispatchers.Main) {
                 context.toast(
                     if (savedToStorage) "Saved to Kizuna/logs/$fileName" else "Saved log (storage folder not set up)",
                 )
@@ -53,7 +51,7 @@ class CrashLogUtil(
             context.startActivity(uri.toShareIntent(context, "text/plain"))
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e) { "Failed to dump crash logs" }
-            withUIContext { context.toast("Failed to get logs") }
+            withContext(Dispatchers.Main) { context.toast("Failed to get logs") }
         }
     }
 
@@ -126,6 +124,7 @@ class CrashLogUtil(
             App ID: ${BuildConfig.APPLICATION_ID}
             App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.COMMIT_SHA}, ${BuildConfig.VERSION_CODE}, ${BuildConfig.BUILD_TIME})
             Installation ID: ${preferences.installationId.get()}
+            Skipped app update: ${preferences.skippedAppUpdate.get().ifEmpty { "None" }}
             Android version: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}; build ${Build.DISPLAY})
             Device brand: ${Build.BRAND}
             Device manufacturer: ${Build.MANUFACTURER}

@@ -14,12 +14,13 @@ import eu.kanade.tachiyomi.source.novel.NovelSourceCatalog
 import eu.kanade.tachiyomi.source.novel.NovelSourceCatalogEntry
 import eu.kanade.tachiyomi.source.novel.NovelSourceInstaller
 import eu.kanade.tachiyomi.source.novel.NovelSourceLoader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import logcat.LogPriority
-import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
 
 @Inject
@@ -37,7 +38,7 @@ class NovelSourcesViewModel(
     }
 
     fun refresh() {
-        viewModelScope.launchIO {
+        viewModelScope.launch(Dispatchers.IO) {
             mutableState.update { it.copy(isLoading = true, error = null) }
             try {
                 val entries = NovelSourceCatalog.fetch()
@@ -64,7 +65,7 @@ class NovelSourcesViewModel(
     }
 
     fun install(entry: NovelSourceCatalogEntry) {
-        viewModelScope.launchIO {
+        viewModelScope.launch(Dispatchers.IO) {
             mutableState.update { it.copy(installingIds = it.installingIds + entry.id) }
             try {
                 NovelSourceInstaller.install(context, entry)
@@ -78,7 +79,7 @@ class NovelSourcesViewModel(
     }
 
     fun uninstall(entry: NovelSourceCatalogEntry) {
-        viewModelScope.launchIO {
+        viewModelScope.launch(Dispatchers.IO) {
             NovelSourceInstaller.uninstall(context, entry.id)
             refresh()
         }

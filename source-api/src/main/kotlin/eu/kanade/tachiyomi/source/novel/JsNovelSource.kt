@@ -9,6 +9,8 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -20,7 +22,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
-import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.injectLazy
 import java.io.File
 import java.security.MessageDigest
@@ -113,15 +114,19 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
         },
     )
 
-    override suspend fun getPopularManga(page: Int): MangasPage = withIOContext {
+    override suspend fun getPopularManga(page: Int): MangasPage = withContext(Dispatchers.IO) {
         callListing("popularNovels", page)
     }
 
-    override suspend fun getLatestUpdates(page: Int): MangasPage = withIOContext {
+    override suspend fun getLatestUpdates(page: Int): MangasPage = withContext(Dispatchers.IO) {
         callListing("latestNovels", page)
     }
 
-    override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = withIOContext {
+    override suspend fun getSearchManga(
+        page: Int,
+        query: String,
+        filters: FilterList,
+    ): MangasPage = withContext(Dispatchers.IO) {
         withEngine { engine, _ ->
             val api = engine.get(SOURCE_GLOBAL, SourcePluginApi::class.java)
             val selections = metadata.filters.mapIndexedNotNull { index, def ->
@@ -140,7 +145,7 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
         chapters: List<SChapter>,
         fetchDetails: Boolean,
         fetchChapters: Boolean,
-    ): SMangaUpdate = withIOContext {
+    ): SMangaUpdate = withContext(Dispatchers.IO) {
         withEngine { engine, _ ->
             val api = engine.get(SOURCE_GLOBAL, SourcePluginApi::class.java)
 
@@ -188,7 +193,7 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
         }
     }
 
-    override suspend fun getChapterText(chapter: SChapter): String = withIOContext {
+    override suspend fun getChapterText(chapter: SChapter): String = withContext(Dispatchers.IO) {
         withEngine { engine, _ ->
             val api = engine.get(SOURCE_GLOBAL, SourcePluginApi::class.java)
             api.chapterContent(chapter.url)

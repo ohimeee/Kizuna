@@ -19,23 +19,23 @@ class EntryLinkRepositoryImpl(
 
     override suspend fun link(entryIdA: Long, entryIdB: Long, relationType: String) {
         val (a, b) = canonicalPair(entryIdA, entryIdB)
-        database.entry_linksQueries.insert(a, b, relationType)
+        database.entry_linkQueries.insert(a, b, relationType)
     }
 
     override suspend fun unlink(entryIdA: Long, entryIdB: Long) {
         val (a, b) = canonicalPair(entryIdA, entryIdB)
-        database.entry_linksQueries.delete(a, b)
+        database.entry_linkQueries.delete(a, b)
     }
 
     override suspend fun getLinkedEntryId(entryId: Long): Long? {
-        return database.entry_linksQueries.getLinkedEntryId(entryId).awaitAsOneOrNull()
+        return database.entry_linkQueries.getLinkedEntryId(entryId).awaitAsOneOrNull()
     }
 
     override fun subscribe(entryId: Long): Flow<Long?> {
-        return database.entry_linksQueries.getLinkedEntryId(entryId).subscribeToOneOrNull()
+        return database.entry_linkQueries.getLinkedEntryId(entryId).subscribeToOneOrNull()
     }
 
-    /** Orders a pair so (a, b) and (b, a) always map to the same row, per entry_links.sq's index. */
+    /** Orders a pair so (a, b) and (b, a) always map to the same row, per entry_link.sq's index. */
     private fun canonicalPair(entryIdA: Long, entryIdB: Long): Pair<Long, Long> {
         return if (entryIdA <= entryIdB) entryIdA to entryIdB else entryIdB to entryIdA
     }

@@ -29,6 +29,10 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.util.system.hasDisplayCutout
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import mihon.app.di.appGraph
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.pluralStringResource
@@ -36,6 +40,7 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import java.text.NumberFormat
 import kotlin.math.roundToInt
+import tachiyomi.core.common.preference.Preference as PreferenceData
 
 object SettingsReaderScreen : SearchableSettings {
 
@@ -124,6 +129,11 @@ object SettingsReaderScreen : SearchableSettings {
                 preference = readerPref.pageTransitions,
                 title = stringResource(MR.strings.pref_page_transitions),
             ),
+            Preference.PreferenceItem.SwitchPreference(
+                preference = readerPref.loadAheadOnlyOverWifi,
+                title = stringResource(MR.strings.pref_load_ahead_only_over_wifi),
+                subtitle = stringResource(MR.strings.pref_load_ahead_only_over_wifi_summary),
+            ),
             getDisplayGroup(readerPreferences = readerPref),
             getEInkGroup(readerPreferences = readerPref),
             getReadingGroup(readerPreferences = readerPref),
@@ -142,26 +152,19 @@ object SettingsReaderScreen : SearchableSettings {
 
     @Composable
     private fun getNovelReaderGroup(novelReaderPreferences: NovelReaderPreferences): Preference.PreferenceGroup {
-        val fontSizePref = novelReaderPreferences.fontSize
-        val fontSize by fontSizePref.collectAsState()
-
-        val lineSpacingPref = novelReaderPreferences.lineSpacing
-        val lineSpacing by lineSpacingPref.collectAsState()
+        // The slider works in whole numbers, so line height (a Float) is shown in tenths: 14 = 1.4x
+        val lineSpacingPref = remember(novelReaderPreferences) { TenthsPreference(novelReaderPreferences.lineSpacing) }
         val minLineSpacing = (NovelReaderPreferences.MIN_LINE_SPACING * 10).roundToInt()
         val maxLineSpacing = (NovelReaderPreferences.MAX_LINE_SPACING * 10).roundToInt()
-
-        val paddingPref = novelReaderPreferences.contentPadding
-        val padding by paddingPref.collectAsState()
 
         return Preference.PreferenceGroup(
             title = "Reader",
             preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
-                    value = fontSize,
+                    preference = novelReaderPreferences.fontSize,
                     valueRange = NovelReaderPreferences.MIN_FONT_SIZE..NovelReaderPreferences.MAX_FONT_SIZE,
                     title = "Text size",
-                    valueString = "${fontSize}sp",
-                    onValueChanged = { fontSizePref.set(it) },
+                    valueText = { "${it}sp" },
                 ),
                 Preference.PreferenceItem.ListPreference(
                     preference = novelReaderPreferences.theme,
@@ -174,18 +177,16 @@ object SettingsReaderScreen : SearchableSettings {
                     title = "Text alignment",
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = (lineSpacing * 10).roundToInt(),
+                    preference = lineSpacingPref,
                     valueRange = minLineSpacing..maxLineSpacing,
                     title = "Line height",
-                    valueString = "${"%.1f".format(lineSpacing)}x",
-                    onValueChanged = { lineSpacingPref.set(it / 10f) },
+                    valueText = { "${"%.1f".format(it / 10f)}x" },
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = padding,
+                    preference = novelReaderPreferences.contentPadding,
                     valueRange = NovelReaderPreferences.MIN_PADDING..NovelReaderPreferences.MAX_PADDING,
                     title = "Padding",
-                    valueString = "${padding}dp",
-                    onValueChanged = { paddingPref.set(it) },
+                    valueText = { "${it}dp" },
                 ),
                 Preference.PreferenceItem.ListPreference(
                     preference = novelReaderPreferences.fontFamily,
@@ -200,8 +201,6 @@ object SettingsReaderScreen : SearchableSettings {
     private fun getNovelGeneralGroup(novelReaderPreferences: NovelReaderPreferences): Preference.PreferenceGroup {
         val autoScroll by novelReaderPreferences.autoScroll.collectAsState()
 
-        val autoScrollSpeedPref = novelReaderPreferences.autoScrollSpeed
-        val autoScrollSpeed by autoScrollSpeedPref.collectAsState()
         val minAutoScrollSpeed = NovelReaderPreferences.MIN_AUTO_SCROLL_SPEED
         val maxAutoScrollSpeed = NovelReaderPreferences.MAX_AUTO_SCROLL_SPEED
 
@@ -243,11 +242,10 @@ object SettingsReaderScreen : SearchableSettings {
                     title = "Auto-scroll",
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = autoScrollSpeed,
+                    preference = novelReaderPreferences.autoScrollSpeed,
                     valueRange = minAutoScrollSpeed..maxAutoScrollSpeed,
                     title = "Auto-scroll speed",
-                    enabled = autoScroll,
-                    onValueChanged = { autoScrollSpeedPref.set(it) },
+                    visible = autoScroll,
                 ),
             ),
         )
@@ -282,7 +280,7 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.drawUnderCutout,
                     title = stringResource(MR.strings.pref_cutout_short),
-                    enabled = LocalView.current.hasDisplayCutout() && fullscreen,
+                    visible = LocalView.current.hasDisplayCutout() && fullscreen,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.keepScreenOn,
@@ -300,12 +298,6 @@ object SettingsReaderScreen : SearchableSettings {
     private fun getEInkGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
         val flashPageState by readerPreferences.flashOnPageChange.collectAsState()
 
-        val flashMillisPref = readerPreferences.flashDurationMillis
-        val flashMillis by flashMillisPref.collectAsState()
-
-        val flashIntervalPref = readerPreferences.flashPageInterval
-        val flashInterval by flashIntervalPref.collectAsState()
-
         val flashColorPref = readerPreferences.flashColor
 
         return Preference.PreferenceGroup(
@@ -317,20 +309,18 @@ object SettingsReaderScreen : SearchableSettings {
                     subtitle = stringResource(MR.strings.pref_flash_page_summ),
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = flashMillis / ReaderPreferences.MILLI_CONVERSION,
-                    valueRange = 1..15,
+                    preference = readerPreferences.flashDurationMillis,
+                    valueRange = ReaderPreferences.MILLI_CONVERSION.let { it..it * 15 step it },
                     title = stringResource(MR.strings.pref_flash_duration),
-                    valueString = stringResource(MR.strings.pref_flash_duration_summary, flashMillis),
-                    enabled = flashPageState,
-                    onValueChanged = { flashMillisPref.set(it * ReaderPreferences.MILLI_CONVERSION) },
+                    valueText = { stringResource(MR.strings.pref_flash_duration_summary, it) },
+                    visible = flashPageState,
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = flashInterval,
+                    preference = readerPreferences.flashPageInterval,
                     valueRange = 1..10,
                     title = stringResource(MR.strings.pref_flash_page_interval),
-                    valueString = pluralStringResource(MR.plurals.pref_pages, flashInterval, flashInterval),
-                    enabled = flashPageState,
-                    onValueChanged = { flashIntervalPref.set(it) },
+                    valueText = { pluralStringResource(MR.plurals.pref_pages, it, it) },
+                    visible = flashPageState,
                 ),
                 Preference.PreferenceItem.ListPreference(
                     preference = flashColorPref,
@@ -341,7 +331,7 @@ object SettingsReaderScreen : SearchableSettings {
                             to stringResource(MR.strings.pref_flash_style_white_black),
                     ),
                     title = stringResource(MR.strings.pref_flash_with),
-                    enabled = flashPageState,
+                    visible = flashPageState,
                 ),
             ),
         )
@@ -404,7 +394,7 @@ object SettingsReaderScreen : SearchableSettings {
                     )
                         .associateWith { stringResource(it.titleRes) },
                     title = stringResource(MR.strings.pref_read_with_tapping_inverted),
-                    enabled = navMode != 5,
+                    visible = navMode != 5,
                 ),
                 Preference.PreferenceItem.ListPreference(
                     preference = imageScaleTypePref,
@@ -427,12 +417,12 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.landscapeZoom,
                     title = stringResource(MR.strings.pref_landscape_zoom),
-                    enabled = imageScaleType == 1,
+                    visible = imageScaleType == 1,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.navigateToPan,
                     title = stringResource(MR.strings.pref_navigate_pan),
-                    enabled = navMode != 5,
+                    visible = navMode != 5,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = dualPageSplitPref,
@@ -446,7 +436,7 @@ object SettingsReaderScreen : SearchableSettings {
                     preference = readerPreferences.dualPageInvertPaged,
                     title = stringResource(MR.strings.pref_dual_page_invert),
                     subtitle = stringResource(MR.strings.pref_dual_page_invert_summary),
-                    enabled = dualPageSplit,
+                    visible = dualPageSplit,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = rotateToFitPref,
@@ -459,7 +449,7 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.dualPageRotateToFitInvert,
                     title = stringResource(MR.strings.pref_page_rotate_invert),
-                    enabled = rotateToFit,
+                    visible = rotateToFit,
                 ),
             ),
         )
@@ -472,12 +462,10 @@ object SettingsReaderScreen : SearchableSettings {
         val navModePref = readerPreferences.navigationModeWebtoon
         val dualPageSplitPref = readerPreferences.dualPageSplitWebtoon
         val rotateToFitPref = readerPreferences.dualPageRotateToFitWebtoon
-        val webtoonSidePaddingPref = readerPreferences.webtoonSidePadding
 
         val navMode by navModePref.collectAsState()
         val dualPageSplit by dualPageSplitPref.collectAsState()
         val rotateToFit by rotateToFitPref.collectAsState()
-        val webtoonSidePadding by webtoonSidePaddingPref.collectAsState()
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.webtoon_viewer),
@@ -499,16 +487,15 @@ object SettingsReaderScreen : SearchableSettings {
                     )
                         .associateWith { stringResource(it.titleRes) },
                     title = stringResource(MR.strings.pref_read_with_tapping_inverted),
-                    enabled = navMode != 5,
+                    visible = navMode != 5,
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = webtoonSidePadding,
+                    preference = readerPreferences.webtoonSidePadding,
                     valueRange = ReaderPreferences.let {
                         it.WEBTOON_PADDING_MIN..it.WEBTOON_PADDING_MAX
                     },
                     title = stringResource(MR.strings.pref_webtoon_side_padding),
-                    valueString = numberFormat.format(webtoonSidePadding / 100f),
-                    onValueChanged = { webtoonSidePaddingPref.set(it) },
+                    valueText = { numberFormat.format(it / 100f) },
                 ),
                 Preference.PreferenceItem.ListPreference(
                     preference = readerPreferences.readerHideThreshold,
@@ -536,7 +523,7 @@ object SettingsReaderScreen : SearchableSettings {
                     preference = readerPreferences.dualPageInvertWebtoon,
                     title = stringResource(MR.strings.pref_dual_page_invert),
                     subtitle = stringResource(MR.strings.pref_dual_page_invert_summary),
-                    enabled = dualPageSplit,
+                    visible = dualPageSplit,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = rotateToFitPref,
@@ -549,7 +536,7 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.dualPageRotateToFitInvertWebtoon,
                     title = stringResource(MR.strings.pref_page_rotate_invert),
-                    enabled = rotateToFit,
+                    visible = rotateToFit,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.webtoonDoubleTapZoomEnabled,
@@ -569,8 +556,6 @@ object SettingsReaderScreen : SearchableSettings {
         val readWithVolumeKeys by readWithVolumeKeysPref.collectAsState()
 
         val verticalNavigator by readerPreferences.verticalNavigator.collectAsState()
-        val verticalNavigatorHeightPref = readerPreferences.verticalNavigatorHeight
-        val verticalNavigatorHeight by verticalNavigatorHeightPref.collectAsState()
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_reader_navigation),
@@ -582,7 +567,7 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.readWithVolumeKeysInverted,
                     title = stringResource(MR.strings.pref_read_with_volume_keys_inverted),
-                    enabled = readWithVolumeKeys,
+                    visible = readWithVolumeKeys,
                 ),
                 Preference.PreferenceItem.MultiSelectListPreference(
                     preference = readerPreferences.verticalNavigator,
@@ -593,15 +578,14 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.verticalNavigatorOnLeft,
                     title = stringResource(MR.strings.pref_webtoon_vertical_navigator_on_left),
-                    enabled = verticalNavigator.isNotEmpty(),
+                    visible = verticalNavigator.isNotEmpty(),
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = verticalNavigatorHeight,
+                    preference = readerPreferences.verticalNavigatorHeight,
                     valueRange = 65..100,
                     steps = 6,
                     title = stringResource(MR.strings.pref_vertical_navigator_height),
-                    onValueChanged = { verticalNavigatorHeightPref.set(it) },
-                    enabled = verticalNavigator.isNotEmpty(),
+                    visible = verticalNavigator.isNotEmpty(),
                 ),
             ),
         )
@@ -624,4 +608,30 @@ object SettingsReaderScreen : SearchableSettings {
             ),
         )
     }
+}
+
+/**
+ * Exposes a [Float] preference as an [Int] count of tenths (1.4f <-> 14) so it can drive an
+ * integer slider. Reads and writes go straight through to [base], so the stored value, its key
+ * and its type are untouched.
+ */
+private class TenthsPreference(private val base: PreferenceData<Float>) : PreferenceData<Int> {
+
+    override fun key() = base.key()
+
+    override fun get() = base.get().toTenths()
+
+    override fun set(value: Int) = base.set(value / 10f)
+
+    override fun isSet() = base.isSet()
+
+    override fun delete() = base.delete()
+
+    override fun defaultValue() = base.defaultValue().toTenths()
+
+    override fun changes() = base.changes().map { it.toTenths() }
+
+    override fun stateIn(scope: CoroutineScope) = changes().stateIn(scope, SharingStarted.Eagerly, get())
+
+    private fun Float.toTenths() = (this * 10).roundToInt()
 }

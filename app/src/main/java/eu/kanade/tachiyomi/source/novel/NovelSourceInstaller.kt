@@ -4,7 +4,8 @@ import android.content.Context
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.awaitSuccess
-import tachiyomi.core.common.util.lang.withIOContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -26,13 +27,13 @@ object NovelSourceInstaller {
         context: Context,
         entry: NovelSourceCatalogEntry,
         network: NetworkHelper = Injekt.get(),
-    ) = withIOContext {
+    ) = withContext(Dispatchers.IO) {
         val script = network.client.newCall(GET(entry.fileUrl)).awaitSuccess().body.string()
         fileFor(context, entry.id).writeText(script)
         NovelSourceLoader.notifyChanged()
     }
 
-    suspend fun uninstall(context: Context, id: String) = withIOContext {
+    suspend fun uninstall(context: Context, id: String) = withContext(Dispatchers.IO) {
         fileFor(context, id).delete()
         NovelSourceLoader.notifyChanged()
     }

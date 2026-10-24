@@ -59,6 +59,10 @@ object TelemetryConfig {
             .getCertificateFingerprints()
             .any { it == KIZUNA_CERTIFICATE_FINGERPRINT }
     }
+
+    fun recordException(throwable: Throwable) {
+        crashlytics?.recordException(throwable)
+    }
 }
 
 private val KIZUNA_PACKAGES = hashSetOf("app.kizuna", "app.kizuna.debug")

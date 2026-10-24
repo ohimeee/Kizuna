@@ -16,6 +16,7 @@ import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.NovelSource
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +26,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
-import tachiyomi.core.common.util.lang.launchNonCancellable
+import mihon.core.metro.AppCoroutineScope
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
@@ -37,7 +38,7 @@ import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
-import java.util.Date
+import kotlin.time.Clock
 
 /**
  * Reader ViewModel for [NovelSource] chapters. Mirrors [ReaderViewModel]'s progress-persistence
@@ -51,6 +52,7 @@ import java.util.Date
 @ContributesIntoMap(AppScope::class, binding = binding<ViewModel>())
 class NovelReaderViewModel(
     private val context: Context,
+    @AppCoroutineScope private val appScope: CoroutineScope,
     private val sourceManager: SourceManager,
     private val getManga: GetManga,
     private val getChaptersByMangaId: GetChaptersByMangaId,
@@ -190,7 +192,7 @@ class NovelReaderViewModel(
                     isLoading = false,
                     chapter = chapter,
                     paragraphs = paragraphs,
-                    initialParagraphIndex = chapter.lastPageRead.toInt()
+                    initialParagraphIndex = chapter.lastPageRead
                         .coerceIn(0, (paragraphs.size - 1).coerceAtLeast(0)),
                     hasPrevChapter = hasPrevChapter,
                     hasNextChapter = hasNextChapter,
@@ -247,13 +249,16 @@ class NovelReaderViewModel(
         val markRead = isAtEnd || wasRead
         viewModelScope.launch {
             updateChapter.await(
-                ChapterUpdate(id = chapter.id, lastPageRead = paragraphIndex.toLong(), read = markRead),
+                ChapterUpdate(chapter.id) {
+                    lastPageRead = paragraphIndex
+                    read = markRead
+                },
             )
         }
         if (markRead && !wasRead) {
             updateTrackChapterRead(chapter)
         }
-        val updated = chapter.copy(lastPageRead = paragraphIndex.toLong(), read = markRead)
+        val updated = chapter.copy(lastPageRead = paragraphIndex, read = markRead)
         syncChapterInList(updated)
         mutableState.update { it.copy(chapter = updated) }
     }
@@ -269,7 +274,8 @@ class NovelReaderViewModel(
 
         val manga = manga ?: return
 
-        viewModelScope.launchNonCancellable {
+        // Finishing a chapter and leaving right away is common, so this outlives the reader
+        appScope.launch {
             trackChapter.await(context, manga.id, chapter.chapterNumber)
         }
     }
@@ -280,7 +286,7 @@ class NovelReaderViewModel(
         chapterReadStartTime = null
         viewModelScope.launch {
             val duration = System.currentTimeMillis() - startTime
-            upsertHistory.await(HistoryUpdate(chapter.id, Date(), duration))
+            upsertHistory.await(HistoryUpdate(chapter.id, Clock.System.now(), duration))
         }
     }
 
@@ -332,8 +338,9 @@ class NovelReaderViewModel(
         syncChapterInList(updated)
         mutableState.update { it.copy(chapter = updated) }
 
-        viewModelScope.launchNonCancellable {
-            updateChapter.await(ChapterUpdate(id = chapter.id, bookmark = bookmarked))
+        // On the app scope so a toggle made right before leaving the reader is still saved
+        appScope.launch {
+            updateChapter.await(ChapterUpdate(chapter.id) { bookmark = bookmarked })
         }
     }
 
@@ -393,8 +400,8 @@ class NovelReaderViewModel(
     }
 
     private fun markChapterRead(chapter: Chapter) {
-        viewModelScope.launchNonCancellable {
-            updateChapter.await(ChapterUpdate(id = chapter.id, read = true))
+        appScope.launch {
+            updateChapter.await(ChapterUpdate(chapter.id) { read = true })
         }
         updateTrackChapterRead(chapter)
         syncChapterInList(chapter.copy(read = true))
