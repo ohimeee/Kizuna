@@ -60,6 +60,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
+import mihon.app.di.appGraph
 import mihon.feature.migration.config.MigrationConfigScreen
 import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.util.system.logcat
@@ -115,11 +116,11 @@ class MangaScreen(
         val readTheComicLabel = stringResource(MR.strings.label_read_the_comic)
         LaunchedEffect(successState.linkedManga) {
             val linked = successState.linkedManga ?: return@LaunchedEffect
-            val actionLabel = if (successState.source.contentType == SourceContentType.NOVEL) {
-                readTheComicLabel
-            } else {
-                readTheNovelLabel
-            }
+            // Label by the linked entry's own type: a link can join two novels or two comics, not
+            // only a comic and its novel
+            val linkedIsNovel =
+                context.appGraph.sourceManager.get(linked.source)?.contentType == SourceContentType.NOVEL
+            val actionLabel = if (linkedIsNovel) readTheNovelLabel else readTheComicLabel
             val result = viewModel.snackbarHostState.showSnackbar(
                 message = linked.title,
                 actionLabel = actionLabel,
