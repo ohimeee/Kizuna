@@ -38,6 +38,7 @@ import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.novelprogress.interactor.UpsertNovelChapterProgress
 import tachiyomi.domain.source.service.SourceManager
 import kotlin.time.Clock
 
@@ -63,6 +64,7 @@ class NovelReaderViewModel(
     private val getIncognitoState: GetIncognitoState,
     private val trackPreferences: TrackPreferences,
     private val trackChapter: TrackChapter,
+    private val upsertNovelChapterProgress: UpsertNovelChapterProgress,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -74,6 +76,9 @@ class NovelReaderViewModel(
     private var chapterReadStartTime: Long? = null
     private var initialized = false
     private var incognitoMode: Boolean = false
+
+    // Scroll ticks are frequent and the percent changes far less often, so only changes are written
+    private var savedPercent: Pair<Long, Int>? = null
 
     // NovelReaderActivity is launchMode="singleTask", so re-tapping a different chapter (e.g.
     // spamming entries in History) while a reader is already open reuses the SAME Activity/
@@ -258,6 +263,13 @@ class NovelReaderViewModel(
                     read = markRead
                 },
             )
+        }
+        val percent = novelProgressPercent(paragraphIndex, state.value.paragraphs.size, isAtEnd)
+        if (savedPercent != chapter.id to percent) {
+            savedPercent = chapter.id to percent
+            appScope.launch(Dispatchers.Main.immediate) {
+                upsertNovelChapterProgress.await(chapter.id, percent)
+            }
         }
         if (markRead && !wasRead) {
             updateTrackChapterRead(chapter)

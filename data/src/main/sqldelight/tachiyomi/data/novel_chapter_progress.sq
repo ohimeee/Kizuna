@@ -1,0 +1,22 @@
+CREATE TABLE novel_chapter_progress(
+    chapter_id INTEGER NOT NULL PRIMARY KEY,
+    progress INTEGER NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES chapter (id)
+    ON DELETE CASCADE
+);
+
+-- How far through a novel chapter the reader got, as a 0..100 percent (see novelProgressPercent). The
+-- chapter only stores a paragraph index, and the paragraph total is known once the text is loaded.
+upsert:
+INSERT INTO novel_chapter_progress(chapter_id, progress)
+VALUES (:chapterId, :progress)
+ON CONFLICT(chapter_id) DO UPDATE SET
+    progress = excluded.progress;
+
+-- Only chapters still in progress: marking a chapter read or unread elsewhere (which resets its
+-- last page read) leaves the stored percent behind, so it is filtered out here rather than shown stale
+getAll:
+SELECT novel_chapter_progress.chapter_id, novel_chapter_progress.progress
+FROM novel_chapter_progress
+JOIN chapter ON chapter.id = novel_chapter_progress.chapter_id
+WHERE chapter.user_read = 0 AND chapter.user_last_page_read > 0;

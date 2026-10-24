@@ -404,6 +404,25 @@ back a greyed-out slider by patching the upstream widget.
        user's own sort choice on a manga already in the library" elsewhere in this codebase. The
        user can still flip it manually via the Sort tab same as any manga.
 
+## Progress percent in History (2026-10-25)
+
+History rows for novel chapters read "Ch. 53 - 2:09 PM • 34%", like LNReader. The chapter only
+stores `lastPageRead` (a paragraph index), and the paragraph total is known only once the text is
+loaded, so the percent is saved separately in the `novel_chapter_progress` table (migration 21,
+`chapter_id` -> 0..100, cascades with the chapter).
+
+- **It is the same number the reader's status strip shows.** Both call `novelProgressPercent()`
+  (`NovelReadingProgress.kt`): `total <= 1` or at the end of the list -> 100, otherwise
+  `index / (total - 1)` **truncated**, not rounded. Don't give `NovelReaderViewModel.updateProgress`
+  its own formula - the two numbers drifting apart is exactly what that shared function prevents.
+- `updateProgress` writes it on the same app-scope/`Main.immediate` launch as the chapter update, and
+  only when it differs from the last value saved for that chapter (scroll ticks are frequent).
+- `HistoryItem` appends " • NN%" only for stored values in **1..99**: nothing at 0 or 100, and
+  comics never have a row. The History view model combines the table's flow into its state, so it
+  updates live; `historyView` is upstream's and was not touched.
+- Not backed up: the resume position already is (via `last_page_read`). A restored novel shows no
+  percent in History until it is read again.
+
 ## Tracker sync
 
 `NovelReaderViewModel.updateProgress()` mirrors `ReaderViewModel`'s tracker-sync call

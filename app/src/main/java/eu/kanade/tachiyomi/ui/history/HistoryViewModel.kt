@@ -52,6 +52,7 @@ import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
+import tachiyomi.domain.novelprogress.interactor.GetNovelChapterProgress
 import tachiyomi.domain.source.service.SourceManager
 import kotlin.time.Duration.Companion.seconds
 
@@ -66,6 +67,7 @@ class HistoryViewModel(
     private val getHistory: GetHistory,
     private val getManga: GetManga,
     private val getNextChapters: GetNextChapters,
+    private val getNovelChapterProgress: GetNovelChapterProgress,
     private val libraryPreferences: LibraryPreferences,
     private val removeHistory: RemoveHistory,
     private val setMangaCategories: SetMangaCategories,
@@ -108,8 +110,9 @@ class HistoryViewModel(
         searchQuery,
         history,
         dialog,
-    ) { searchQuery, history, dialog ->
-        State(searchQuery = searchQuery, list = history, dialog = dialog)
+        getNovelChapterProgress.subscribe().distinctUntilChanged(),
+    ) { searchQuery, history, dialog, novelProgress ->
+        State(searchQuery = searchQuery, list = history, dialog = dialog, novelProgress = novelProgress)
     }
         .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(5.seconds), State())
 
@@ -270,6 +273,8 @@ class HistoryViewModel(
         val searchQuery: String? = null,
         val list: List<HistoryUiModel>? = null,
         val dialog: Dialog? = null,
+        // Percent read of novel chapters, by chapter id
+        val novelProgress: Map<Long, Int> = emptyMap(),
     )
 
     sealed interface Dialog {

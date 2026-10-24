@@ -81,6 +81,7 @@ fun HistoryScreen(
             } else {
                 HistoryScreenContent(
                     history = it,
+                    novelProgress = state.novelProgress,
                     contentPadding = contentPadding,
                     onClickCover = { history -> onClickCover(history.mangaId) },
                     onClickResume = { history -> onClickResume(history.mangaId, history.chapterId) },
@@ -95,6 +96,7 @@ fun HistoryScreen(
 @Composable
 private fun HistoryScreenContent(
     history: List<HistoryUiModel>,
+    novelProgress: Map<Long, Int>,
     contentPadding: PaddingValues,
     onClickCover: (HistoryWithRelations) -> Unit,
     onClickResume: (HistoryWithRelations) -> Unit,
@@ -126,6 +128,7 @@ private fun HistoryScreenContent(
                     HistoryItem(
                         modifier = Modifier.animateItem(),
                         history = value,
+                        readProgress = novelProgress[value.chapterId],
                         onClickCover = { onClickCover(value) },
                         onClickResume = { onClickResume(value) },
                         onClickDelete = { onClickDelete(value) },

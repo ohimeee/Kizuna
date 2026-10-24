@@ -40,6 +40,7 @@ private val HistoryItemHeight = 96.dp
 @Composable
 fun HistoryItem(
     history: HistoryWithRelations,
+    readProgress: Int?,
     onClickCover: () -> Unit,
     onClickResume: () -> Unit,
     onClickDelete: () -> Unit,
@@ -80,16 +81,24 @@ fun HistoryItem(
                 style = textStyle,
             )
             val readAt = remember { history.readAt?.toTimestampString() ?: "" }
+            // Novel chapters only: nothing is stored for comics, and 0 / 100 say nothing useful
+            val progress = if (readProgress != null && readProgress in 1..99) {
+                " • " + stringResource(MR.strings.novel_read_progress, readProgress)
+            } else {
+                ""
+            }
             Text(
-                text = if (history.chapterNumber > -1) {
-                    stringResource(
-                        MR.strings.recent_manga_time,
-                        formatChapterNumber(history.chapterNumber),
-                        readAt,
-                    )
-                } else {
-                    readAt
-                },
+                text = (
+                    if (history.chapterNumber > -1) {
+                        stringResource(
+                            MR.strings.recent_manga_time,
+                            formatChapterNumber(history.chapterNumber),
+                            readAt,
+                        )
+                    } else {
+                        readAt
+                    }
+                    ) + progress,
                 modifier = Modifier.padding(top = 4.dp),
                 style = textStyle,
             )
@@ -125,6 +134,7 @@ private fun HistoryItemPreviews(
         Surface {
             HistoryItem(
                 history = historyWithRelations,
+                readProgress = null,
                 onClickCover = {},
                 onClickResume = {},
                 onClickDelete = {},

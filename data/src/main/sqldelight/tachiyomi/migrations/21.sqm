@@ -1,0 +1,7 @@
+-- Add novel_chapter_progress table holding how far through a novel chapter the reader got, as a percent
+CREATE TABLE novel_chapter_progress(
+    chapter_id INTEGER NOT NULL PRIMARY KEY,
+    progress INTEGER NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES chapter (id)
+    ON DELETE CASCADE
+);

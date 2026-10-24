@@ -159,6 +159,7 @@
     <string name="label_linked_title_search_hint">Search your library…</string>
     <string name="label_read_the_novel">📖 Read the Novel</string>
     <string name="label_read_the_comic">🎨 Read the Comic</string>
+    <string name="novel_read_progress">%d%%</string>
     <string name="action_edit_notes">Edit notes</string>
     <string name="action_install">Install</string>
     <string name="action_share">Share</string>

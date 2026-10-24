@@ -133,6 +133,7 @@ import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.reader.NovelReaderViewModel
+import eu.kanade.tachiyomi.ui.reader.novelProgressPercent
 import eu.kanade.tachiyomi.ui.reader.setting.NovelFontFamily
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderTheme
@@ -784,11 +785,9 @@ private fun NovelChapterListPanel(
  */
 @Composable
 private fun readingProgressPercent(listState: LazyListState, total: Int): Int {
-    if (total <= 1) return 100
     val index by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex } }
     val canScrollForward by remember(listState) { derivedStateOf { listState.canScrollForward } }
-    if (!canScrollForward) return 100
-    return ((index.toFloat() / (total - 1)) * 100).toInt().coerceIn(0, 100)
+    return novelProgressPercent(index, total, isAtEnd = !canScrollForward)
 }
 
 /**
