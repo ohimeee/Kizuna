@@ -74,6 +74,8 @@ of the screen, close enough to a punch-hole camera to be clipped. **Keep it a fl
 the `displayCutout` inset was tried and reverted: it is already covered by the `systemBars` padding
 while the bars are up (so the text jumped by a cutout's height every time the chrome was toggled),
 and it reports zero while the bars are hidden, which is the exact case it was meant for.
+It is `64.dp`, doubled from the original `32.dp` at the user's request (asked 2026-08-26, done
+2026-10-25: "Space above the title should be 2x the length").
 
 Chapter text sits in a **`SelectionContainer`** so it can be long-pressed, selected and copied —
 Compose text is inert without one. Known limit, inherent to rendering chapters in a `LazyColumn`:

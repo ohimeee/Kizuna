@@ -254,7 +254,7 @@ private const val CHAPTER_TITLE_SCALE = 1.7f
 private const val CHAPTER_TITLE_LINE_SPACING = 1.25f
 
 /** Space above the chapter title, kept clear of the top edge (and of any camera cutout). */
-private val CHAPTER_TOP_PADDING = 32.dp
+private val CHAPTER_TOP_PADDING = 64.dp
 
 /**
  * Longest first paragraph still treated as a chapter heading. Real titles are short; anything
