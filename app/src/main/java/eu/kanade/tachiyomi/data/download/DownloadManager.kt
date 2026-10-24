@@ -5,9 +5,9 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.data.download.model.takeIfDownloadable
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
-import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
@@ -113,7 +113,7 @@ class DownloadManager(
     private suspend fun downloadFromChapterId(chapterId: Long): Download? {
         val chapter = getChapter.await(chapterId) ?: return null
         val manga = getManga.await(chapter.mangaId) ?: return null
-        val source = sourceManager.get(manga.source) as? HttpSource ?: return null
+        val source = sourceManager.get(manga.source)?.takeIfDownloadable() ?: return null
 
         return Download(source, manga, chapter)
     }
@@ -194,6 +194,18 @@ class DownloadManager(
      * @param chapter the chapter to read.
      */
     suspend fun getChapterTextIfDownloaded(source: Source, manga: Manga, chapter: Chapter): String? {
+        // Looking the folder up on disk costs a storage query per candidate name (a lot on SAF), and
+        // most chapters opened aren't downloaded. A settled index saying "no" is trusted; while the
+        // index is still being built the null falls through to the disk lookup so a download isn't missed.
+        val indexed = cache.isChapterDownloadedIfIndexed(
+            chapter.name,
+            chapter.scanlator,
+            chapter.url,
+            manga.title,
+            source.id,
+        )
+        if (indexed == false) return null
+
         val chapterDir = provider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, manga.title, source)
             ?: return null
         val file = chapterDir.findFile(Downloader.NOVEL_CHAPTER_FILE_NAME) ?: return null

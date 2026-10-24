@@ -182,6 +182,23 @@ class DownloadCache(
     }
 
     /**
+     * Like [isChapterDownloaded], but null while the index can't be trusted to say "no": it is being
+     * built or rebuilt, so a chapter missing from it may just not be indexed yet.
+     */
+    fun isChapterDownloadedIfIndexed(
+        chapterName: String,
+        chapterScanlator: String?,
+        chapterUrl: String,
+        mangaTitle: String,
+        sourceId: Long,
+    ): Boolean? {
+        renewCache()
+        if (lastRenew == 0L || renewalJob?.isActive == true) return null
+
+        return isChapterDownloaded(chapterName, chapterScanlator, chapterUrl, mangaTitle, sourceId)
+    }
+
+    /**
      * Returns the amount of downloaded chapters.
      */
     fun getTotalDownloadCount(): Int {

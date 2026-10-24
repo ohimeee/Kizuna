@@ -284,6 +284,14 @@ bearing:
 Auto-scroll cannot trigger the pull-to-previous gesture: that connection rejects anything whose
 `NestedScrollSource` isn't `UserInput`, and programmatic scrolls arrive as `SideEffect`.
 
+### Settings > Reader > Novel: speed slider hidden, not greyed out (2026-10-24)
+
+The "Auto-scroll speed" slider in `SettingsReaderScreen`'s Novel tab is now **hidden** while
+"Auto-scroll" is off, where it used to show greyed out (`enabled = autoScroll`). Upstream Mihon
+v0.21.2's `SliderPreference` dropped `enabled` and only has `visible`, and its own sliders (e.g. the
+E-Ink flash ones) made the same switch, so this follows suit (`visible = autoScroll`). Don't bring
+back a greyed-out slider by patching the upstream widget.
+
 ## Chapter switching
 
 - **The "no persistent prev/next row" rule below was reversed on 2026-08-17**: prev/next buttons

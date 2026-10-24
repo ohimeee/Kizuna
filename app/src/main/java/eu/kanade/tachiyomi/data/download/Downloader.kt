@@ -594,6 +594,9 @@ class Downloader(
             throw Exception(context.stringResource(MR.strings.page_list_empty_error))
         }
 
+        // The tmp dir is reused after a failed attempt, and on SAF createFile would name a clash
+        // "chapter (1).txt", leaving the truncated old file as the one that gets read
+        tmpDir.findFile(NOVEL_CHAPTER_FILE_NAME)?.delete()
         tmpDir.createFile(NOVEL_CHAPTER_FILE_NAME)!!.openOutputStream().use {
             it.write(text.toByteArray())
         }

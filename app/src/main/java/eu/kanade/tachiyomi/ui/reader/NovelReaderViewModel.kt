@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.NovelSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -247,7 +248,10 @@ class NovelReaderViewModel(
         val chapter = state.value.chapter ?: return
         val wasRead = chapter.read
         val markRead = isAtEnd || wasRead
-        viewModelScope.launch {
+        // On the app scope so the read flag lands in the DB along with the tracker push below, even
+        // if the reader is closed right as the chapter ends. Main.immediate (as ReaderViewModel does)
+        // keeps successive scroll ticks starting in order, so a stale one can't land after a newer one.
+        appScope.launch(Dispatchers.Main.immediate) {
             updateChapter.await(
                 ChapterUpdate(chapter.id) {
                     lastPageRead = paragraphIndex
@@ -284,7 +288,8 @@ class NovelReaderViewModel(
         val chapter = state.value.chapter ?: return
         val startTime = chapterReadStartTime ?: return
         chapterReadStartTime = null
-        viewModelScope.launch {
+        // On the app scope so the session still gets recorded when the reader is closed
+        appScope.launch(Dispatchers.Main.immediate) {
             val duration = System.currentTimeMillis() - startTime
             upsertHistory.await(HistoryUpdate(chapter.id, Clock.System.now(), duration))
         }
