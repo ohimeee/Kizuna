@@ -160,6 +160,10 @@
     <string name="label_read_the_novel">📖 Read the Novel</string>
     <string name="label_read_the_comic">🎨 Read the Comic</string>
     <string name="novel_read_progress">%d%%</string>
+    <string name="novel_chapter_progress">Progress %1$d%%</string>
+    <string name="label_link_suggestions">Suggested</string>
+    <string name="label_link_with_suggestion">Link with %1$s?</string>
+    <string name="action_link">Link</string>
     <string name="action_edit_notes">Edit notes</string>
     <string name="action_install">Install</string>
     <string name="action_share">Share</string>

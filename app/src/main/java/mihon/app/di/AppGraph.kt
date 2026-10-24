@@ -51,6 +51,7 @@ import tachiyomi.domain.backup.service.BackupPreferences
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.ResetCategoryFlags
 import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.entrylink.interactor.GetLinkSuggestions
 import tachiyomi.domain.entrylink.interactor.GetLinkedEntry
 import tachiyomi.domain.entrylink.interactor.LinkEntries
 import tachiyomi.domain.entrylink.interactor.UnlinkEntries
@@ -127,6 +128,7 @@ interface AppGraph : ViewModelGraph {
     val getManga: GetManga
     val getLibraryManga: GetLibraryManga
     val getLinkedEntry: GetLinkedEntry
+    val getLinkSuggestions: GetLinkSuggestions
     val linkEntries: LinkEntries
     val unlinkEntries: UnlinkEntries
     val getCategories: GetCategories

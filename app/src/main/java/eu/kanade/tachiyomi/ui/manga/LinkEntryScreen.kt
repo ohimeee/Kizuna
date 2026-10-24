@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,14 +54,17 @@ class LinkEntryScreen(private val manga: Manga) : Screen() {
         val linkEntries = remember { context.appGraph.linkEntries }
         val unlinkEntries = remember { context.appGraph.unlinkEntries }
         val getLibraryManga = remember { context.appGraph.getLibraryManga }
+        val getLinkSuggestions = remember { context.appGraph.getLinkSuggestions }
 
         var isLoading by remember { mutableStateOf(true) }
         var linkedManga by remember { mutableStateOf<Manga?>(null) }
         var query by remember { mutableStateOf("") }
         var results by remember { mutableStateOf<List<Manga>>(emptyList()) }
+        var suggestions by remember { mutableStateOf<List<Manga>>(emptyList()) }
 
         LaunchedEffect(Unit) {
             linkedManga = getLinkedEntry.await(manga.id)
+            suggestions = getLinkSuggestions.await(manga)
             isLoading = false
         }
 
@@ -102,31 +106,51 @@ class LinkEntryScreen(private val manga: Manga) : Screen() {
                     }
                 }
                 else -> {
-                    Column(modifier = Modifier.padding(contentPadding)) {
-                        OutlinedTextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            label = { Text(text = stringResource(MR.strings.label_linked_title_search_hint)) },
-                            modifier = Modifier.padding(16.dp),
-                        )
-                        if (query.isNotBlank() && results.isEmpty()) {
-                            Text(
-                                text = stringResource(MR.strings.label_linked_title_none),
+                    val onPick: (Manga) -> Unit = { target ->
+                        scope.launch {
+                            linkEntries.await(manga.id, target.id)
+                            navigator.pop()
+                        }
+                    }
+                    // One list so the suggestions come first and scroll away with the rest
+                    LazyColumn(contentPadding = contentPadding) {
+                        if (suggestions.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = stringResource(MR.strings.label_link_suggestions),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                )
+                            }
+                            items(suggestions) { target ->
+                                ListItem(
+                                    headlineContent = { Text(text = target.title) },
+                                    modifier = Modifier.clickable { onPick(target) },
+                                )
+                            }
+                        }
+                        item {
+                            OutlinedTextField(
+                                value = query,
+                                onValueChange = { query = it },
+                                label = { Text(text = stringResource(MR.strings.label_linked_title_search_hint)) },
                                 modifier = Modifier.padding(16.dp),
                             )
                         }
-                        LazyColumn {
-                            items(results) { target ->
-                                ListItem(
-                                    headlineContent = { Text(text = target.title) },
-                                    modifier = Modifier.clickable {
-                                        scope.launch {
-                                            linkEntries.await(manga.id, target.id)
-                                            navigator.pop()
-                                        }
-                                    },
+                        if (query.isNotBlank() && results.isEmpty()) {
+                            item {
+                                Text(
+                                    text = stringResource(MR.strings.label_linked_title_none),
+                                    modifier = Modifier.padding(16.dp),
                                 )
                             }
+                        }
+                        items(results) { target ->
+                            ListItem(
+                                headlineContent = { Text(text = target.title) },
+                                modifier = Modifier.clickable { onPick(target) },
+                            )
                         }
                     }
                 }

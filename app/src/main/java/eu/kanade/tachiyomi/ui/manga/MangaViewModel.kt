@@ -44,6 +44,7 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceContentType
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
@@ -93,6 +94,7 @@ import tachiyomi.domain.chapter.model.NoChaptersException
 import tachiyomi.domain.chapter.service.calculateChapterGap
 import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.domain.chapter.service.missingChaptersCount
+import tachiyomi.domain.entrylink.interactor.GetLinkSuggestions
 import tachiyomi.domain.entrylink.interactor.GetLinkedEntry
 import tachiyomi.domain.entrylink.interactor.LinkEntries
 import tachiyomi.domain.entrylink.interactor.UnlinkEntries
@@ -103,6 +105,7 @@ import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.applyFilter
+import tachiyomi.domain.novelprogress.interactor.GetNovelChapterProgress
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
@@ -140,6 +143,8 @@ class MangaViewModel(
     private val filterChaptersForDownload: FilterChaptersForDownload,
     private val updateMangaFromRemote: UpdateMangaFromRemote,
     private val getLinkedEntry: GetLinkedEntry,
+    private val getLinkSuggestions: GetLinkSuggestions,
+    private val getNovelChapterProgress: GetNovelChapterProgress,
     private val linkEntries: LinkEntries,
     private val unlinkEntries: UnlinkEntries,
     private val sourceManager: SourceManager,
@@ -209,6 +214,8 @@ class MangaViewModel(
 
     private var hasPromptedToAddBefore = false
 
+    private var hasOfferedLink = false
+
     private val defaultChapterFlagsJob = viewModelScope.launch {
         val manga = getMangaAndChapters.awaitManga(mangaId)
         if (!manga.favorite) {
@@ -241,6 +248,9 @@ class MangaViewModel(
 
     private val linkedManga = getLinkedEntry.subscribe(mangaId).distinctUntilChanged()
 
+    // Percent read of novel chapters, by chapter id
+    private val novelProgress = getNovelChapterProgress.subscribe().distinctUntilChanged()
+
     private val trackers = flow { emit(sourceManager.getOrStub(getMangaAndChapters.awaitManga(mangaId).source)) }
         .flatMapLatest { source ->
             combine(
@@ -262,14 +272,15 @@ class MangaViewModel(
         scanlators,
         trackers,
         combine(selectedChapterIds, queuedDownloadStates.pausedWhileUnsubscribed(), ::Pair),
-        combine(dialog, isRefreshingData, linkedManga, ::Triple),
+        combine(dialog, isRefreshingData, combine(linkedManga, novelProgress, ::Pair), ::Triple),
     ) {
             mangaAndChapters,
             (availableScanlators, excludedScanlators),
             (trackingCount, hasLoggedInTrackers),
             (selectedIds, downloads),
-            (dialog, isRefreshingData, linkedManga),
+            (dialog, isRefreshingData, linked),
         ->
+        val (linkedManga, novelProgress) = linked
         State.Success(
             manga = mangaAndChapters.manga,
             source = mangaAndChapters.source,
@@ -291,6 +302,7 @@ class MangaViewModel(
             dialog = dialog,
             hideMissingChapters = hideMissingChapters,
             linkedManga = linkedManga,
+            novelProgress = novelProgress,
         )
     }
         // Composition would otherwise build these on first read, on the main thread, for every new state
@@ -465,6 +477,7 @@ class MangaViewModel(
                         val result = updateManga.awaitUpdateFavorite(manga.id, true)
                         if (!result) return@launch
                         moveMangaToCategory(defaultCategory)
+                        offerLinkSuggestion(manga)
                     }
 
                     // Automatic 'Default' or no categories
@@ -472,6 +485,7 @@ class MangaViewModel(
                         val result = updateManga.awaitUpdateFavorite(manga.id, true)
                         if (!result) return@launch
                         moveMangaToCategory(null)
+                        offerLinkSuggestion(manga)
                     }
 
                     // Choose a category
@@ -555,7 +569,29 @@ class MangaViewModel(
         if (manga.favorite) return
 
         viewModelScope.launch {
-            updateManga.awaitUpdateFavorite(manga.id, true)
+            if (updateManga.awaitUpdateFavorite(manga.id, true)) offerLinkSuggestion(manga)
+        }
+    }
+
+    /**
+     * After [manga] is added to the library, offers to link it to the one library entry whose title
+     * strongly matches (its comic or novel counterpart). Once per visit, and never for an entry that
+     * is already linked. Accepting links them, which the screen's linked-entry snackbar then shows.
+     */
+    private fun offerLinkSuggestion(manga: Manga) {
+        if (hasOfferedLink) return
+        viewModelScope.launch {
+            val match = getLinkSuggestions.awaitBestMatch(manga) ?: return@launch
+            if (hasOfferedLink) return@launch
+            hasOfferedLink = true
+            val result = snackbarHostState.showSnackbar(
+                message = context.stringResource(MR.strings.label_link_with_suggestion, match.title),
+                actionLabel = context.stringResource(MR.strings.action_link),
+                withDismissAction = true,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                linkEntries.await(manga.id, match.id)
+            }
         }
     }
 
@@ -1137,7 +1173,11 @@ class MangaViewModel(
             val dialog: Dialog? = null,
             val hideMissingChapters: Boolean = false,
             val linkedManga: Manga? = null,
+            val novelProgress: Map<Long, Int> = emptyMap(),
         ) : State {
+            val isNovel: Boolean
+                get() = source.contentType == SourceContentType.NOVEL
+
             val processedChapters by lazy {
                 chapters.applyFilters(manga).toList()
             }

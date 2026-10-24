@@ -436,6 +436,7 @@ private fun MangaScreenSmallImpl(
                         isAnyChapterSelected = state.selectedChapters.isNotEmpty(),
                         chapterSwipeStartAction = chapterSwipeStartAction,
                         chapterSwipeEndAction = chapterSwipeEndAction,
+                        novelProgress = state.novelProgress.takeIf { state.isNovel },
                         onChapterClicked = onChapterClicked,
                         onDownloadChapter = onDownloadChapter,
                         downloadProgressProvider = downloadProgressProvider,
@@ -663,6 +664,7 @@ fun MangaScreenLargeImpl(
                                 isAnyChapterSelected = state.selectedChapters.isNotEmpty(),
                                 chapterSwipeStartAction = chapterSwipeStartAction,
                                 chapterSwipeEndAction = chapterSwipeEndAction,
+                                novelProgress = state.novelProgress.takeIf { state.isNovel },
                                 onChapterClicked = onChapterClicked,
                                 onDownloadChapter = onDownloadChapter,
                                 downloadProgressProvider = downloadProgressProvider,
@@ -725,6 +727,8 @@ private fun LazyListScope.sharedChapterItems(
     isAnyChapterSelected: Boolean,
     chapterSwipeStartAction: LibraryPreferences.ChapterSwipeAction,
     chapterSwipeEndAction: LibraryPreferences.ChapterSwipeAction,
+    // Percent read by chapter id for a novel; null for a comic
+    novelProgress: Map<Long, Int>?,
     onChapterClicked: (Chapter) -> Unit,
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
     downloadProgressProvider: (chapterId: Long) -> Int,
@@ -761,10 +765,18 @@ private fun LazyListScope.sharedChapterItems(
                     readProgress = item.chapter.lastPageRead
                         .takeIf { !item.chapter.read && it > 0L }
                         ?.let {
-                            stringResource(
-                                MR.strings.chapter_progress,
-                                it + 1,
-                            )
+                            if (novelProgress != null) {
+                                // A novel's lastPageRead is a paragraph index, so show the saved percent instead
+                                // (none for chapters read before it was stored)
+                                novelProgress[item.chapter.id]?.let { percent ->
+                                    stringResource(MR.strings.novel_chapter_progress, percent)
+                                }
+                            } else {
+                                stringResource(
+                                    MR.strings.chapter_progress,
+                                    it + 1,
+                                )
+                            }
                         },
                     scanlator = item.chapter.scanlator.takeIf { !it.isNullOrBlank() },
                     read = item.chapter.read,

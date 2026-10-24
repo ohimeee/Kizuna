@@ -425,6 +425,52 @@ loaded, so the percent is saved separately in the `novel_chapter_progress` table
 - Not backed up: the resume position already is (via `last_page_read`). A restored novel shows no
   percent in History until it is read again.
 
+## Progress percent on the details screen (2026-10-25)
+
+The details screen's chapter row shows "Progress 34%" under a partly read **novel** chapter where
+Mihon shows "Page: 51". A novel's `lastPageRead` is a paragraph index and means nothing to the user,
+so `sharedChapterItems` (presentation `MangaScreen.kt`) swaps it for the percent saved by the History
+feature above, read from `GetNovelChapterProgress` and combined into `MangaViewModel`'s state the
+same way `HistoryViewModel` does.
+
+- **Same condition as the old text** (unread, `lastPageRead > 0`); only the wording differs. Comics
+  keep "Page: N" - the map is passed as `null` for them (`state.isNovel`, i.e.
+  `source.contentType == NOVEL`), which is what selects the branch.
+- **A novel chapter with no stored percent shows nothing**, never "Page: N" - it was read before the
+  percent was saved, and a paragraph index would be the very number this replaces.
+
+## Link suggestions (2026-10-25)
+
+Linking a comic to its novel (or the reverse) is mostly a matter of finding the other entry, so the
+library is searched for title matches in two places. **Library only**: no source or network search.
+
+- **`LinkEntryScreen`** opens with a "Suggested" section ahead of the search box, up to 5 entries
+  from `GetLinkSuggestions`. Tapping one links exactly as picking a search result does. The entry
+  itself and an already-linked entry (which gets the unlink view instead) are never offered.
+- **After adding to the library**, `MangaViewModel.offerLinkSuggestion` shows "Link with <title>?" /
+  "Link" for the single best **strong** match, if the new entry has no link yet. Once per screen
+  visit (`hasOfferedLink`), however the entry got added (default category, category dialog,
+  duplicate dialog). Accepting creates the link, and the screen's existing linked-entry snackbar
+  then appears by itself because it watches `linkedManga`. Hooked into the add paths, not into a
+  watch on `state`: collecting `state` for the whole life of the view model would keep its upstream
+  flows from pausing while the screen is not visible.
+- **Content type only orders results.** An entry of the other type gets a small ranking bonus
+  (`rankingScore`), but a same-type match is still offered, since novel-to-novel links are allowed.
+
+Matching is `TitleMatching.kt` (domain, `entrylink/service`), a pure function with unit tests:
+
+1. Normalise: lowercase, drop trailing `[...]` groups and trailing `(...)` groups whose content is a
+   noise word (Novel, Light Novel, Web Novel, Manga, Manhwa, Manhua, Webtoon, Comic, Official, ...),
+   turn punctuation into spaces, collapse whitespace. Other parentheses, like "(Final Season)", are
+   part of the title and stay.
+2. Score: exact (also ignoring spaces) 1.0, starts-with 0.9, contains at a word boundary 0.8 (the
+   shorter title at least 6 characters), word-set Jaccard >= 0.6 at most 0.7 (filler words such as
+   "the" and "of" ignored).
+3. **Strong** is 0.8 or more (exact or contains); anything from 0.42 up is worth listing.
+
+A single shared word ("The", "System") never reaches the threshold - it is in the tests, don't loosen
+the Jaccard cut-off to make a case pass.
+
 ## Tracker sync
 
 `NovelReaderViewModel.updateProgress()` mirrors `ReaderViewModel`'s tracker-sync call
