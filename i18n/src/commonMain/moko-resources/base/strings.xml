@@ -40,6 +40,9 @@
     <string name="label_extension_info">Extension info</string>
     <string name="label_help">Help</string>
     <string name="label_support_us">Support Us</string>
+    <string name="support_us_message">Kizuna is free and open source, built and maintained by one developer in their spare time. If it makes your reading better, a tip on Ko-fi helps keep updates coming. Thank you!</string>
+    <string name="support_us_kofi">Support on Ko-fi</string>
+    <string name="support_us_mihon">Kizuna is built on Mihon. Consider supporting them too</string>
     <string name="label_default">Default</string>
     <string name="label_warning">Warning</string>
     <string name="label_auto">Auto</string>

@@ -7,6 +7,9 @@ object Constants {
     const val URL_DONATE_OPENCOLLECTIVE = "https://opencollective.com/mihon/contribute"
     const val URL_DISCORD = "https://discord.gg/mihon"
 
+    // Kizuna's own support page
+    const val URL_KOFI = "https://ko-fi.com/kizunaorg"
+
     const val MANGA_EXTRA = "manga"
 
     const val MAIN_ACTIVITY = "eu.kanade.tachiyomi.ui.main.MainActivity"

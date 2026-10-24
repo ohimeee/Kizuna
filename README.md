@@ -17,6 +17,12 @@ Discover and read manga, webtoons, comics, and light novels — in one unified l
 
 *Requires Android 8.0 or higher.*
 
+## Support
+
+Kizuna is free and open source. If it makes your reading better, you can tip the developer on Ko-fi.
+
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Kizuna-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/kizunaorg)
+
 Kizuna is distributed as a direct APK download only (not on the Google Play Store).
 
 ## About

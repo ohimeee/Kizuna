@@ -312,10 +312,10 @@ class MainActivity : BaseActivity() {
                 if (!isBenchmarkBuildType) {
                     if (isLaunch) CheckForUpdates()
                     ShowOnboarding()
-                    // Kizuna: disabled. Upstream Mihon's donation campaign links to Mihon's own
-                    // Patreon/OpenCollective/Discord (see Constants.URL_DONATE_*), which must not
-                    // be solicited under the Kizuna name. Re-enable only after wiring Kizuna's own
-                    // donation links, or remove ShowDonationCampaign()/SupportUsScreen entirely.
+                    // Kizuna: disabled on purpose. Upstream Mihon's donation campaign links to
+                    // Mihon's own Patreon/OpenCollective/Discord (see Constants.URL_DONATE_*), which
+                    // must not be solicited under the Kizuna name. Kizuna now has its own Ko-fi,
+                    // reachable from the Support Us screen (Constants.URL_KOFI); the popup stays off.
                     // ShowDonationCampaign()
                 }
             }
