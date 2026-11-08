@@ -43,8 +43,8 @@ android {
     defaultConfig {
         applicationId = "app.kizuna"
 
-        versionCode = 40
-        versionName = "0.32.0"
+        versionCode = 41
+        versionName = "0.32.1"
 
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
