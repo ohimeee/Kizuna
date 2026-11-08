@@ -39,9 +39,9 @@ Register(JSON.stringify({
   name: "Azure Chronicles",
   lang: "en",
   baseUrl: "https://azurechronicles.com",
-  version: "1.0.0",
+  version: "1.0.1",
   supportsLatest: true,
-  iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=azurechronicles.com",
+  iconUrl: "https://azurechronicles.com/wp-content/uploads/2026/07/cropped-AZURECHRONICLES-LOGO-1-192x192.png",
   // Option values are the exact <option value>s of the filter bar on /series/. The site's genre
   // and tag filters are multi-select, the app's are single-select, so one genre at a time. The
   // ~150-entry Tag filter is left out.
