@@ -34,6 +34,8 @@ import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 private val HistoryItemHeight = 96.dp
 
@@ -41,6 +43,7 @@ private val HistoryItemHeight = 96.dp
 fun HistoryItem(
     history: HistoryWithRelations,
     readProgress: Int?,
+    timeFormatter: DateTimeFormatter,
     onClickCover: () -> Unit,
     onClickResume: () -> Unit,
     onClickDelete: () -> Unit,
@@ -80,7 +83,9 @@ fun HistoryItem(
                 overflow = TextOverflow.Ellipsis,
                 style = textStyle,
             )
-            val readAt = remember { history.readAt?.toTimestampString() ?: "" }
+            val readAt = remember(timeFormatter, history.readAt) {
+                history.readAt?.toTimestampString(timeFormatter) ?: ""
+            }
             // Novel chapters only: nothing is stored for comics, and 0 / 100 say nothing useful
             val progress = if (readProgress != null && readProgress in 1..99) {
                 " • " + stringResource(MR.strings.novel_read_progress, readProgress)
@@ -135,6 +140,7 @@ private fun HistoryItemPreviews(
             HistoryItem(
                 history = historyWithRelations,
                 readProgress = null,
+                timeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT),
                 onClickCover = {},
                 onClickResume = {},
                 onClickDelete = {},

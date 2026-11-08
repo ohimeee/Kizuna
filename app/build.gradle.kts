@@ -43,8 +43,8 @@ android {
     defaultConfig {
         applicationId = "app.kizuna"
 
-        versionCode = 39
-        versionName = "0.31.1"
+        versionCode = 40
+        versionName = "0.32.0"
 
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
@@ -306,7 +306,6 @@ dependencies {
 
     // UI libraries
     implementation(libs.material)
-    implementation(libs.flexibleAdapter)
     implementation(libs.photoView)
     implementation(libs.directionalViewPager) {
         exclude(group = "androidx.viewpager", module = "viewpager")
