@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.awaitSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.CacheControl
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -28,7 +29,10 @@ object NovelSourceInstaller {
         entry: NovelSourceCatalogEntry,
         network: NetworkHelper = Injekt.get(),
     ) = withContext(Dispatchers.IO) {
-        val script = network.client.newCall(GET(entry.fileUrl)).awaitSuccess().body.string()
+        // Skip the HTTP cache: GET() caches for 10 minutes by default, which could install the
+        // previous version of a file that was just updated in the catalog.
+        val script = network.client.newCall(GET(entry.fileUrl, cache = CacheControl.FORCE_NETWORK))
+            .awaitSuccess().body.string()
         fileFor(context, entry.id).writeText(script)
         NovelSourceLoader.notifyChanged()
     }

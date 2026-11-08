@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.network.parseAs
 import kotlinx.serialization.json.Json
+import okhttp3.CacheControl
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -22,7 +23,9 @@ object NovelSourceCatalog {
         network: NetworkHelper = Injekt.get(),
         json: Json = Injekt.get(),
     ): List<NovelSourceCatalogEntry> {
-        val response = network.client.newCall(GET(indexUrl)).awaitSuccess()
+        // Skip the HTTP cache so Refresh really refetches: GET() caches for 10 minutes by default,
+        // on top of raw.githubusercontent's own 5-minute CDN cache.
+        val response = network.client.newCall(GET(indexUrl, cache = CacheControl.FORCE_NETWORK)).awaitSuccess()
         return with(json) { response.parseAs<List<NovelSourceCatalogEntry>>() }
     }
 }
