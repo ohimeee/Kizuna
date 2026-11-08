@@ -76,6 +76,9 @@ searchNovels: function (query, page, filtersJson) {
 
 - `fetchApi(url, options)` — synchronous (no Promise); returns `{ text(), json() }`.
   `options.method` (default `GET`), `options.headers`, `options.body`.
+  A 429 (or a 503 with `Retry-After`) is retried automatically after the `Retry-After` delay (default
+  2s, clamped to 1-10s, up to 3 retries) before the body is returned, so plugins don't need their own
+  rate-limit waiting. The body is still returned whatever the final status.
 - `Http.getCookie(url, name)` — reads a cookie previously set on the device's cookie jar for
   that URL's host (e.g. a CSRF token set by an earlier `Http.get`/`fetchApi` call). Needed by
   sites whose JSON APIs require a cookie value echoed back as a query param.

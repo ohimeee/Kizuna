@@ -299,9 +299,7 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
 
     private fun httpGet(url: String, headersJson: String): String {
         val request = Request.Builder().url(url).headers(parseHeaders(headersJson)).build()
-        network.client.newCall(request).execute().use { response ->
-            return response.body?.string().orEmpty()
-        }
+        return executeWithRateLimitRetry(request)
     }
 
     private fun httpPost(url: String, body: String, headersJson: String): String {
@@ -310,8 +308,38 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
             .headers(parseHeaders(headersJson))
             .post(body.toRequestBody(null))
             .build()
-        network.client.newCall(request).execute().use { response ->
-            return response.body?.string().orEmpty()
+        return executeWithRateLimitRetry(request)
+    }
+
+    /**
+     * Runs [request] and returns the body whatever the status (the plugin contract), except that a
+     * rate-limit answer is waited out first: HTTP 429, or 503 carrying a `Retry-After` header (a bare
+     * 503 is a real outage, not a "slow down"). Sleeps for `Retry-After` seconds (integer; 2 when
+     * missing or unparseable; clamped to 1..10) and retries, up to [MAX_RATE_LIMIT_RETRIES] times,
+     * then returns the last body as-is. Novel Phoenix's Cloudflare answers bursts this way ("error
+     * code: 1015"), and plugins would otherwise have to busy-wait in JS.
+     *
+     * The blocking [Thread.sleep] is fine here: every call into the plugin goes through a
+     * `withContext(Dispatchers.IO)` in the public overrides above, so this always runs on an IO
+     * thread, never the main thread. Cloudflare challenges stay with `CloudflareInterceptor` in the
+     * client's interceptor chain; this only deals with plain rate limits.
+     */
+    private fun executeWithRateLimitRetry(request: Request): String {
+        var retries = 0
+        while (true) {
+            val retryAfterSeconds = network.client.newCall(request).execute().use { response ->
+                val header = response.header("Retry-After")
+                val rateLimited = response.code == HTTP_TOO_MANY_REQUESTS ||
+                    (response.code == HTTP_SERVICE_UNAVAILABLE && header != null)
+                if (!rateLimited || retries >= MAX_RATE_LIMIT_RETRIES) {
+                    return response.body?.string().orEmpty()
+                }
+                (header?.trim()?.toLongOrNull() ?: DEFAULT_RETRY_AFTER_SECONDS)
+                    .coerceIn(MIN_RETRY_AFTER_SECONDS, MAX_RETRY_AFTER_SECONDS)
+            }
+            // `use` has closed the response (and released its connection) before we sleep.
+            retries++
+            Thread.sleep(retryAfterSeconds * 1000)
         }
     }
 
@@ -326,6 +354,13 @@ class JsNovelSource(private val scriptFile: File) : NovelSource {
         private const val REGISTER_GLOBAL = "__register"
         private const val SOURCE_GLOBAL = "source"
         private const val ANY_OPTION_LABEL = "Any"
+
+        private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val HTTP_SERVICE_UNAVAILABLE = 503
+        private const val MAX_RATE_LIMIT_RETRIES = 3
+        private const val DEFAULT_RETRY_AFTER_SECONDS = 2L
+        private const val MIN_RETRY_AFTER_SECONDS = 1L
+        private const val MAX_RETRY_AFTER_SECONDS = 10L
 
         /**
          * Small JS shim giving plugin scripts a `fetchApi`-like convenience wrapper and shorter
