@@ -165,7 +165,7 @@ class NovelReaderViewModel(
             val text = downloadManager.getChapterTextIfDownloaded(source, manga, chapter)
                 ?: withTimeout(30_000) { source.getChapterText(chapter.toSChapter()) }
 
-            val bodyParagraphs = splitParagraphs(text)
+            val bodyParagraphs = splitNovelParagraphs(text)
 
             // Emptiness must be judged on the body alone - withChapterTitle() below always
             // prepends a non-blank title, which would otherwise mask a completely empty chapter.
@@ -455,26 +455,6 @@ class NovelReaderViewModel(
 
         val normalizedParagraph = normalize(paragraph)
         return normalizedParagraph.isNotEmpty() && normalizedParagraph == normalize(chapterName)
-    }
-
-    /**
-     * Splits chapter HTML into paragraphs, keeping *inline* tags (`<b>`, `<i>`, etc.) intact so
-     * [eu.kanade.presentation.reader.parseInlineHtml] can render them as real bold/italic spans
-     * instead of losing formatting - only block-level `<p>` wrappers and paragraph boundaries are
-     * stripped here.
-     */
-    private fun splitParagraphs(text: String): List<String> {
-        // A closing heading tag ends a paragraph just like </p> does. Without it, a chapter body
-        // shaped like "<h4>Title</h4><p>First sentence...</p>" - which is what NovelArrow and
-        // Webnovel both produce, since they prepend the chapter name as a heading - collapsed the
-        // title and the opening sentence into a single chunk. That chunk is index 0, which the
-        // reader renders force-bolded as the chapter title, so the first sentence of every chapter
-        // got swallowed into the bold title line.
-        val stripBlockTags = Regex("(?i)</?(p|h[1-6])[^>]*>")
-        val split = text.split(Regex("(?i)</p>|</h[1-6]>|<br\\s*/?>\\s*<br\\s*/?>|\n{2,}"))
-            .map { it.replace(stripBlockTags, "").trim() }
-            .filter { it.isNotEmpty() }
-        return split.ifEmpty { listOf(text.replace(stripBlockTags, "").trim()) }
     }
 
     @Immutable

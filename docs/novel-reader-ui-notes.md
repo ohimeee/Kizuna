@@ -32,8 +32,39 @@ how the in-chapter sheet already does it - this fork doesn't localize the novel-
   - Implemented in `NovelRichText.kt`: `parseInlineHtml()` (tag → `AnnotatedString` spans) +
     `applyBionicReading()` (overlays bold on first ~half of each word, composes on top of real
     bold/italic rather than replacing it).
-  - `NovelReaderViewModel.splitParagraphs()` must keep inline tags intact when splitting into
+  - `splitNovelParagraphs()` (was `NovelReaderViewModel.splitParagraphs()`) must keep inline tags intact when splitting into
     paragraphs — only strip block-level `<p>` wrappers.
+
+## Paragraph splitting: whitespace and `<br>` (2026-11-08)
+
+`splitNovelParagraphs()` (`NovelParagraphs.kt`, called by `NovelReaderViewModel`; it used to be the
+private `splitParagraphs`) picks a mode per chapter. **HTML mode** is on when the text contains a
+`<p>`, `<br>`, `<h1-6>` or `<div>`; anything else is **plain text**, which still splits on blank lines (`\n{2,}`)
+only and keeps single newlines as line breaks, exactly as before.
+
+In HTML mode `JsNovelSource.selectHtml` hands over Jsoup's pretty-printed `outerHtml`, so a chapter
+that is one `<p>` with `<br>` between lines arrives as `<p>Line\n  <br>\n  Line\n  <br>...`. Rules:
+
+- Whitespace runs (source newlines and indentation included) collapse to one space and `<br>` is
+  the only line break; whitespace around a `<br>` is dropped. A non-breaking space is **not**
+  collapsed inside text, but a paragraph holding only whitespace/nbsp/`<br>` is blank and dropped.
+- 2+ consecutive `<br>` (whitespace between them allowed), `</p>`, `</h1-6>` and a blank line end a
+  paragraph, as before.
+- A block with **3+** single `<br>` is a one-line-per-paragraph chapter and is split at every `<br>`
+  (an inline `<i>`/`<b>` open at the split is closed and reopened across it). 1-2 stay as in-paragraph
+  breaks ("Q. ...<br>A. No."). Without the split such a chapter is one giant paragraph, which breaks
+  progress granularity, search, and the leading-title de-duplication in `withChapterTitle`.
+- Inline tags are still left in the paragraph text for `parseInlineHtml`; an unbalanced one is
+  tolerated by the renderer, same as before.
+
+Reading progress is a paragraph index, so ordinary one-`<p>`-per-paragraph chapters must keep the
+**identical** paragraph list (`NovelParagraphsTest` compares against the old splitter). Only chapters
+with `<br>`-separated lines, or empty/`&nbsp;`-only `<p>` spacers (now dropped), change index.
+
+Rejected: **fixing it only in the plugins.** Jsoup pretty-prints after the plugin has chosen its
+selector, any plugin returning `selectHtml` output hits it, and Azure Chronicles' in-plugin
+workaround would have to be copied into every source. Also rejected: stripping the whitespace in
+`parseInlineHtml` alone - that fixes the blank lines but leaves the chapter as one paragraph.
 
 ## Settings sheet (Reader tab / General tab, matching LNReader's layout)
 
