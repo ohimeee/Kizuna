@@ -38,5 +38,13 @@
     "version": "1.0.1",
     "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/novelphoenix.js",
     "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=novelphoenix.com"
+  },
+  {
+    "id": "azurechronicles",
+    "name": "Azure Chronicles",
+    "lang": "en",
+    "version": "1.0.0",
+    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/azurechronicles.js",
+    "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=azurechronicles.com"
   }
 ]
