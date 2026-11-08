@@ -27,7 +27,7 @@ Register(JSON.stringify({
   name: "Novel Phoenix",
   lang: "en",
   baseUrl: "https://novelphoenix.com",
-  version: "1.0.1",
+  version: "1.0.2",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelphoenix.com",
   // Genre slugs scraped from the site's own nav on /genre-all/sort-popular/status-all/all-novel
@@ -132,6 +132,30 @@ function absoluteUrl(url) {
   return BASE_URL.replace(/\/$/, "") + url;
 }
 
+// Cloudflare rate-limits this site (HTTP 429 with the plain-text body "error code: 1015" and
+// Retry-After: 2) after roughly ten requests in a few seconds, which a long chapter list easily
+// triggers. The bridge returns the body whatever the status, so spot that body, wait out the
+// Retry-After, and retry instead of parsing it as an empty page.
+function sleep(ms) {
+  var end = Date.now() + ms;
+  while (Date.now() < end) { /* QuickJS has no timers; busy-wait */ }
+}
+
+function isBlockedBody(html) {
+  if (!html) return true;
+  if (html.length < 400 && /error code:\s*\d+|rate limit|too many requests/i.test(html)) return true;
+  return /<title>\s*Just a moment/i.test(html);
+}
+
+function fetchPage(url) {
+  for (var attempt = 0; attempt < 4; attempt++) {
+    var html = Http.get(url, "{}");
+    if (!isBlockedBody(html)) return html;
+    sleep(2500);
+  }
+  throw new Error("Novel Phoenix is rate-limiting or blocking requests (Cloudflare). Wait a moment and retry.");
+}
+
 // The site prefixes its own "Chapter N - " onto titles that frequently already start with the
 // same number, giving "Chapter 1 - 1: Nightmare Begins". Collapse that one duplicated number so
 // it reads "Chapter 1: Nightmare Begins". Only fires when the two numbers actually match, so a
@@ -159,15 +183,22 @@ function novelDescription(html) {
 }
 
 function parseListing(html) {
-  var urls = selectAllAttr(html, ".novel-item a", "href");
-  var titles = selectAllAttr(html, ".novel-item a", "title");
-  var covers = selectAllAttr(html, ".novel-item img.lazy", "data-src");
+  // `.novel-item` comes in three layouts (genre listing, search, latest-release) that differ in
+  // where the title attribute lives (search and latest have none), whether the cover is lazy, and
+  // how many links an item has (latest-release has three: cover, title, chapter). Select exactly
+  // one node per item so the parallel arrays stay aligned: the item's first link, its
+  // `.novel-title`, its cover img.
+  var urls = selectAllAttr(html, ".novel-item > a, .novel-item .cover-wrap > a", "href");
+  var titles = selectAllText(html, ".novel-item .novel-title");
+  var lazyCovers = selectAllAttr(html, ".novel-item .novel-cover img", "data-src");
+  var srcCovers = selectAllAttr(html, ".novel-item .novel-cover img", "src");
 
   var novels = urls.map(function (url, i) {
+    var cover = lazyCovers[i] || (srcCovers[i] && srcCovers[i].indexOf("data:") !== 0 ? srcCovers[i] : "");
     return {
       title: titles[i] || "",
       url: absoluteUrl(url),
-      cover: covers[i] ? absoluteUrl(covers[i]) : null,
+      cover: cover ? absoluteUrl(cover) : null,
     };
   }).filter(function (n) { return n.title && n.url; });
 
@@ -180,12 +211,12 @@ function parseListing(html) {
 globalThis.source = {
 
   popularNovels: function (page) {
-    var html = Http.get(BASE_URL + "genre-all/sort-popular/status-all/all-novel?page=" + page, "{}");
+    var html = fetchPage(BASE_URL + "genre-all/sort-popular/status-all/all-novel?page=" + page);
     return parseListing(html);
   },
 
   latestNovels: function (page) {
-    var html = Http.get(BASE_URL + "latest-release-novels?page=" + page, "{}");
+    var html = fetchPage(BASE_URL + "latest-release-novels?page=" + page);
     return parseListing(html);
   },
 
@@ -200,15 +231,15 @@ globalThis.source = {
       var status = filters.status || "all";
       var country = filters.country || "all-novel";
       var url = BASE_URL + "genre-" + genre + "/sort-" + sort + "/status-" + status + "/" + country + "?page=" + page;
-      return parseListing(Http.get(url, "{}"));
+      return parseListing(fetchPage(url));
     }
 
-    var html = Http.get(BASE_URL + "search?keyword=" + encodeURIComponent(query) + "&page=" + page, "{}");
+    var html = fetchPage(BASE_URL + "search?keyword=" + encodeURIComponent(query) + "&page=" + page);
     return parseListing(html);
   },
 
   novelDetails: function (url) {
-    var html = Http.get(url, "{}");
+    var html = fetchPage(url);
 
     return JSON.stringify({
       title: selectText(html, "h1.novel-title"),
@@ -221,36 +252,52 @@ globalThis.source = {
   },
 
   chapterList: function (novelUrl) {
-    // 100 chapters per page; loop until a page returns none. Confirmed live that an over-the-end
-    // page yields zero links rather than repeating the last one, so this terminates.
+    // 100 chapters per page. An over-the-end page is CLAMPED to the last page here (it repeats
+    // the final chapters instead of returning none - the old "returns zero links" assumption no
+    // longer holds, and looping on it spun until Cloudflare rate-limited us), so stop on an empty
+    // page, a short page, or any page that only repeats chapters already collected.
     var baseChaptersUrl = novelUrl.replace(/\/?$/, "") + "/chapters";
-    var allUrls = [];
-    var allTitles = [];
+    var chapters = [];
+    var seen = {};
     var page = 1;
 
     while (true) {
-      var html = Http.get(baseChaptersUrl + "?page=" + page, "{}");
+      var html = fetchPage(baseChaptersUrl + "?page=" + page);
       var urls = selectAllAttr(html, ".chapter-list li a", "href");
       if (urls.length === 0) break;
 
-      var titles = selectAllAttr(html, ".chapter-list li a", "title");
-      allUrls = allUrls.concat(urls);
-      allTitles = allTitles.concat(titles);
+      // Rows are `<a href><span class="chapter-no">Ch. 12</span><strong class="chapter-title">Name
+      // </strong>...</a>` - the <a> carries no title attribute any more.
+      var titles = selectAllText(html, ".chapter-list li a .chapter-title");
+      var nos = selectAllText(html, ".chapter-list li a .chapter-no");
+      var added = 0;
+      for (var i = 0; i < urls.length; i++) {
+        if (seen[urls[i]]) continue;
+        seen[urls[i]] = true;
+        added += 1;
+        var numMatch = (nos[i] || "").match(/\d+(?:\.\d+)?/);
+        var num = numMatch ? numMatch[0] : "";
+        var title = titles[i] || "";
+        var name = /^\s*Chapter\b/i.test(title) ? cleanChapterTitle(title)
+          : (num ? "Chapter " + num + (title ? ": " + title : "") : title);
+        chapters.push({
+          name: name || ("Chapter " + (chapters.length + 1)),
+          url: absoluteUrl(urls[i]),
+          chapterNumber: parseFloat(num) || chapters.length + 1,
+        });
+      }
+      if (added === 0 || urls.length < 100) break;
       page += 1;
     }
 
-    return JSON.stringify(allUrls.map(function (url, i) {
-      return {
-        name: cleanChapterTitle(allTitles[i]) || ("Chapter " + (i + 1)),
-        url: absoluteUrl(url),
-        chapterNumber: i + 1,
-      };
-    }));
+    return JSON.stringify(chapters);
   },
 
   chapterContent: function (chapterUrl) {
-    var html = Http.get(chapterUrl, "{}");
-    return selectHtml(html, "#content");
+    var html = fetchPage(chapterUrl);
+    var content = selectHtml(html, "#content");
+    if (!content) throw new Error("Chapter content (#content) not found. Retry.");
+    return content;
   },
 
 };

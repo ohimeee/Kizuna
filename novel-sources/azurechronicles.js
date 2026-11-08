@@ -39,7 +39,7 @@ Register(JSON.stringify({
   name: "Azure Chronicles",
   lang: "en",
   baseUrl: "https://azurechronicles.com",
-  version: "1.0.1",
+  version: "1.0.2",
   supportsLatest: true,
   iconUrl: "https://azurechronicles.com/wp-content/uploads/2026/07/cropped-AZURECHRONICLES-LOGO-1-192x192.png",
   // Option values are the exact <option value>s of the filter bar on /series/. The site's genre
@@ -264,12 +264,61 @@ function chaptersFromPage(html) {
   return chapters;
 }
 
-// Chapters often open and close with a spacer `<p>&nbsp;</p>`; drop those at the edges only (blank
-// paragraphs in the middle are the translator's scene spacing and stay).
-function trimBlankParagraphs(html) {
-  return html
-    .replace(/^(<div[^>]*>)(?:\s*<p>(?:\s|&nbsp;)*<\/p>)+/i, "$1")
-    .replace(/(?:\s*<p>(?:\s|&nbsp;)*<\/p>)+(\s*<\/div>\s*)$/i, "$1");
+// The reader (NovelReaderViewModel.splitParagraphs + parseInlineHtml) turns `</p>` into a paragraph
+// break and every `<br>` into a newline, but keeps all other text verbatim, and selectHtml() is
+// Jsoup's *pretty-printed* outerHtml. For a chapter the site writes as ONE <p> with `<br>` between
+// lines (some early chapters do), that comes out as "<p>Chapter 1\n  <br>\n  line two\n  <br>\n  ...":
+// every line break becomes newline + newline-and-2-spaces + newline, i.e. a blank line between every
+// line plus a 2-space indent, and the whole chapter is a single paragraph, so the reader can't drop
+// the duplicated title line either.
+//
+// So rebuild the body here as clean one-<p>-per-paragraph HTML: whitespace and nbsp collapsed and
+// trimmed, empty paragraphs dropped (the site never uses blank paragraphs as scene breaks; an
+// empty `<li>&nbsp;</li>` spacer is the only one seen - real "***" breaks are text and stay), and
+// only <b>/<strong>/<i>/<em>/<u>/<br> kept. Inline tags are re-balanced per paragraph.
+function normalizeProse(html, title) {
+  var inner = html.replace(/^\s*<div[^>]*>/i, "").replace(/<\/div>\s*$/i, "");
+  var blocks = inner.split(/<\/?(?:p|div|ul|ol|li|h[1-6]|blockquote)(?:\s[^>]*)?>/i);
+  var open = [];
+  var out = [];
+
+  function emit(part) {
+    var startOpen = open.slice();
+    var s = part.replace(/<(\/?)([a-z0-9]+)[^>]*>/gi, function (m, slash, rawName) {
+      var name = rawName.toLowerCase();
+      if (name === "br") return "<br>";
+      if (!/^(?:b|strong|i|em|u)$/.test(name)) return "";
+      if (!slash) {
+        open.push(name);
+        return "<" + name + ">";
+      }
+      var at = open.lastIndexOf(name);
+      if (at < 0) return "";
+      open.splice(at, 1);
+      return "</" + name + ">";
+    });
+    s = s.replace(/&nbsp;|&#160;|&#xa0;|&#8203;|[\u00a0\u200b\u2060\ufeff]/gi, " ").replace(/\s+/g, " ");
+    s = s.replace(/ ?<br> ?/g, "<br>").replace(/^(?: |<br>)+/, "").replace(/(?: |<br>)+$/, "");
+    var hasText = s.replace(/<[^>]*>/g, "").replace(/\s+/g, "") !== "";
+    if (!hasText) return;
+    var opening = startOpen.map(function (t) { return "<" + t + ">"; }).join("");
+    var closing = open.slice().reverse().map(function (t) { return "</" + t + ">"; }).join("");
+    out.push(opening + s + closing);
+  }
+
+  blocks.forEach(function (block) {
+    // A <p> with many <br>s is the site writing one line per paragraph. A couple of <br>s inside
+    // a paragraph is a deliberate line break (e.g. a Q/A pair) and stays as <br>.
+    var brs = (block.match(/<br\s*\/?>/gi) || []).length;
+    (brs >= 3 ? block.split(/<br\s*\/?>/i) : [block]).forEach(emit);
+  });
+
+  // The page already prints the chapter name as its own heading and the reader prepends
+  // Chapter.name, so a leading line that just repeats it would be shown twice.
+  var key = function (v) { return v.replace(/<[^>]*>/g, "").replace(/[^a-z0-9]/gi, "").toLowerCase(); };
+  if (title && out.length && key(out[0]) === key(title)) out.shift();
+
+  return out.map(function (p) { return "<p>" + p + "</p>"; }).join("\n");
 }
 
 globalThis.source = {
@@ -325,7 +374,8 @@ globalThis.source = {
   // coin gate), so this is "" for them, on purpose.
   chapterContent: function (chapterUrl) {
     var html = Http.get(chapterUrl, "{}");
-    return trimBlankParagraphs(selectHtml(html, "#ac-chapter-prose"));
+    var prose = selectHtml(html, "#ac-chapter-prose");
+    return prose ? normalizeProse(prose, selectText(html, "h1.ac-r-chapter-name")) : "";
   },
 
 };

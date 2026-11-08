@@ -23,7 +23,7 @@ Register(JSON.stringify({
   name: "NovelFire",
   lang: "en",
   baseUrl: "https://novelfire.net",
-  version: "2.3.0",
+  version: "2.3.1",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novelfire.net",
   // Slugs scraped from the real genre-listing page's nav links/URLs
@@ -127,6 +127,30 @@ function absoluteUrl(url) {
   return BASE_URL.replace(/\/$/, "") + url;
 }
 
+// Cloudflare rate-limits this site (HTTP 429 with the plain-text body "error code: 1015" and
+// Retry-After: 2) after roughly ten requests in a few seconds, which a long chapter list easily
+// triggers. The bridge returns the body whatever the status, so spot that body, wait out the
+// Retry-After, and retry instead of parsing it as an empty page.
+function sleep(ms) {
+  var end = Date.now() + ms;
+  while (Date.now() < end) { /* QuickJS has no timers; busy-wait */ }
+}
+
+function isBlockedBody(html) {
+  if (!html) return true;
+  if (html.length < 400 && /error code:\s*\d+|rate limit|too many requests/i.test(html)) return true;
+  return /<title>\s*Just a moment/i.test(html);
+}
+
+function fetchPage(url) {
+  for (var attempt = 0; attempt < 4; attempt++) {
+    var html = Http.get(url, "{}");
+    if (!isBlockedBody(html)) return html;
+    sleep(2500);
+  }
+  throw new Error("NovelFire is rate-limiting or blocking requests (Cloudflare). Wait a moment and retry.");
+}
+
 // `.summary .content` carries a "Show More" expand button inside it
 // (`<div class="expand"><a class="expand-btn">...<span>Show More</span></a></div>`), so taking the
 // block's whole text tacks that label onto the end of every description. Read just the paragraphs.
@@ -142,15 +166,21 @@ function novelDescription(html) {
 }
 
 function parseListing(html) {
-  var urls = selectAllAttr(html, ".novel-item a", "href");
-  var titles = selectAllAttr(html, ".novel-item a", "title");
-  var covers = selectAllAttr(html, ".novel-item img.lazy", "data-src");
+  // `.novel-item` comes in three layouts (genre listing, search, latest-release) that differ in
+  // where the title attribute lives, whether the cover is lazy, and how many links an item has
+  // (latest-release has three: cover, title, chapter). Select exactly one node per item so the
+  // parallel arrays stay aligned: the item's first link, its `.novel-title`, its cover img.
+  var urls = selectAllAttr(html, ".novel-item > a, .novel-item .cover-wrap > a", "href");
+  var titles = selectAllText(html, ".novel-item .novel-title");
+  var lazyCovers = selectAllAttr(html, ".novel-item .novel-cover img", "data-src");
+  var srcCovers = selectAllAttr(html, ".novel-item .novel-cover img", "src");
 
   var novels = urls.map(function (url, i) {
+    var cover = lazyCovers[i] || (srcCovers[i] && srcCovers[i].indexOf("data:") !== 0 ? srcCovers[i] : "");
     return {
       title: titles[i] || "",
       url: absoluteUrl(url),
-      cover: covers[i] ? absoluteUrl(covers[i]) : null,
+      cover: cover ? absoluteUrl(cover) : null,
     };
   }).filter(function (n) { return n.title && n.url; });
 
@@ -163,12 +193,12 @@ function parseListing(html) {
 globalThis.source = {
 
   popularNovels: function (page) {
-    var html = Http.get(BASE_URL + "genre-all/sort-popular/status-all/all-novel?page=" + page, "{}");
+    var html = fetchPage(BASE_URL + "genre-all/sort-popular/status-all/all-novel?page=" + page);
     return parseListing(html);
   },
 
   latestNovels: function (page) {
-    var html = Http.get(BASE_URL + "latest-release-novels?page=" + page, "{}");
+    var html = fetchPage(BASE_URL + "latest-release-novels?page=" + page);
     return parseListing(html);
   },
 
@@ -184,15 +214,15 @@ globalThis.source = {
       var status = filters.status || "all";
       var country = filters.country || "all-novel";
       var url = BASE_URL + "genre-" + genre + "/sort-" + sort + "/status-" + status + "/" + country + "?page=" + page;
-      return parseListing(Http.get(url, "{}"));
+      return parseListing(fetchPage(url));
     }
 
-    var html = Http.get(BASE_URL + "search?keyword=" + encodeURIComponent(query) + "&page=" + page, "{}");
+    var html = fetchPage(BASE_URL + "search?keyword=" + encodeURIComponent(query) + "&page=" + page);
     return parseListing(html);
   },
 
   novelDetails: function (url) {
-    var html = Http.get(url, "{}");
+    var html = fetchPage(url);
 
     return JSON.stringify({
       title: selectText(html, "h1.novel-title"),
@@ -207,35 +237,57 @@ globalThis.source = {
   chapterList: function (novelUrl) {
     // The chapters page paginates at 100/page (confirmed live against a 3000+ chapter novel) -
     // a single fetch silently truncated long novels to their first 100 chapters. Loop until a
-    // page comes back with no chapter links.
+    // page comes back with no chapter links, a short page, or only chapters already collected.
     var baseChaptersUrl = novelUrl.replace(/\/?$/, "") + "/chapters";
-    var allUrls = [];
-    var allTitles = [];
+    var chapters = [];
+    var seen = {};
     var page = 1;
 
     while (true) {
-      var html = Http.get(baseChaptersUrl + "?page=" + page, "{}");
+      var html = fetchPage(baseChaptersUrl + "?page=" + page);
       var urls = selectAllAttr(html, ".chapter-list li a", "href");
       if (urls.length === 0) break;
 
-      var titles = selectAllAttr(html, ".chapter-list li a", "title");
-      allUrls = allUrls.concat(urls);
-      allTitles = allTitles.concat(titles);
+      var titles = selectAllText(html, ".chapter-list li a .chapter-title");
+      var added = 0;
+      for (var i = 0; i < urls.length; i++) {
+        if (seen[urls[i]]) continue;
+        seen[urls[i]] = true;
+        added += 1;
+        chapters.push({
+          name: titles[i] || ("Chapter " + (chapters.length + 1)),
+          url: absoluteUrl(urls[i]),
+          chapterNumber: chapters.length + 1,
+        });
+      }
+      if (added === 0 || urls.length < 100) break;
       page += 1;
     }
 
-    return JSON.stringify(allUrls.map(function (url, i) {
-      return {
-        name: allTitles[i] || ("Chapter " + (i + 1)),
-        url: absoluteUrl(url),
-        chapterNumber: i + 1,
-      };
-    }));
+    return JSON.stringify(chapters);
   },
 
   chapterContent: function (chapterUrl) {
-    var html = Http.get(chapterUrl, "{}");
-    return selectHtml(html, "#content");
+    // novelfire.net 302-redirects every chapter page to a mirror (readnovel.site) that serves only
+    // a "Loading..." page whose script forwards the browser on (to novelphoenix.com, the sister
+    // site with the same slugs). The HTTP client follows the 302 but never runs that script, so
+    // #content came back empty. Follow the JS redirect by hand (same fix as LNReader's plugin).
+    var html = fetchPage(chapterUrl);
+    var content = selectHtml(html, "#content");
+    if (content) return content;
+
+    var m = html.match(/window\.location\.href\s*=\s*["']([^"']+)["']/);
+    if (m) {
+      content = selectHtml(fetchPage(m[1].replace(/\\\//g, "/")), "#content");
+      if (content) return content;
+    }
+    // Last resort: the sister site serves the same chapter under /novel/ instead of /book/.
+    var alt = chapterUrl.replace("https://novelfire.net/book/", "https://novelphoenix.com/novel/");
+    if (alt !== chapterUrl) {
+      content = selectHtml(fetchPage(alt), "#content");
+      if (content) return content;
+    }
+    throw new Error("Chapter content (#content) not found - the site may be redirecting to a mirror. Retry.");
   },
 
 };
