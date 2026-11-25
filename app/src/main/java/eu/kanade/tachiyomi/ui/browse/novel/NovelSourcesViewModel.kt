@@ -9,7 +9,6 @@ import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.binding
 import dev.zacsweers.metrox.viewmodel.ViewModelKey
-import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.novel.JsNovelSource
 import eu.kanade.tachiyomi.source.novel.NovelSourceCatalog
 import eu.kanade.tachiyomi.source.novel.NovelSourceCatalogEntry
@@ -22,7 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
-import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.core.common.util.system.logcat
 
 @Inject
@@ -30,7 +28,6 @@ import tachiyomi.core.common.util.system.logcat
 @ContributesIntoMap(AppScope::class, binding = binding<ViewModel>())
 class NovelSourcesViewModel(
     private val context: Context,
-    private val sourcePreferences: SourcePreferences,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -72,11 +69,6 @@ class NovelSourcesViewModel(
             mutableState.update { it.copy(installingIds = it.installingIds + entry.id) }
             try {
                 NovelSourceInstaller.install(context, entry)
-                // Browse only lists sources whose language is enabled, so a freshly installed
-                // Korean or Japanese plugin would otherwise vanish until the user found the
-                // language toggle under Sources > filter. Installing one is a clear enough
-                // signal that its language is wanted.
-                sourcePreferences.enabledLanguages.getAndSet { it + entry.lang }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to install novel source ${entry.id}" }
             } finally {

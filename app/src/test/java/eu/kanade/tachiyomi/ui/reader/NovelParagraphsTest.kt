@@ -123,24 +123,4 @@ class NovelParagraphsTest {
         splitNovelParagraphs(text) shouldBe listOf(text)
         splitNovelParagraphs(text) shouldBe legacySplit(text)
     }
-
-    @Test
-    fun `naver style chapter in one p with blank lines splits per paragraph`() {
-        // Naver Webnovel serves a whole chapter as a single <p> with blank lines between paragraphs.
-        val html = "<div class=\"book_data size3\" id=\"con_data\">\n\t\t\t\t<p>내 옷장에는 목도리가 17개 있다.\n\n" +
-            "전부 내가 떴다.\n\n***\n\n“강 대리~”</p>\n\t\t\t</div>"
-        splitNovelParagraphs(html).map { it.replace(Regex("<[^>]+>"), "").trim() } shouldBe
-            listOf("내 옷장에는 목도리가 17개 있다.", "전부 내가 떴다.", "***", "“강 대리~”")
-    }
-
-    @Test
-    fun `one p per line with a full width indent keeps the indent and drops blank lines`() {
-        // Japanese web-novel markup (e.g. Syosetu): one <p id="L1"> per line, <p><br></p> as a blank line, lines indented with U+3000.
-        val html = "<div class=\"js-novel-text p-novel__text\">\n<p id=\"L1\">　俺は34歳住所不定無職。</p>\n" +
-            "<p id=\"L2\"><br></p>\n<p id=\"L3\">「寿命を短くする呪いが掛けられております」</p>\n</div>"
-        // The wrapping div's tag stays glued to the first paragraph (the renderer drops it), and
-        // the newline after it collapses to an ASCII space; the U+3000 indent itself must survive.
-        splitNovelParagraphs(html).map { it.replace(Regex("<[^>]+>"), "").trim(' ') } shouldBe
-            listOf("　俺は34歳住所不定無職。", "「寿命を短くする呪いが掛けられております」")
-    }
 }

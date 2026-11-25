@@ -52,10 +52,10 @@ private val NAMED_ENTITIES = mapOf(
     "para" to "¶",
     "ensp" to " ",
     "emsp" to " ",
-    "thinsp" to "\u2009",
-    "zwj" to "\u200d",
-    "zwnj" to "\u200c",
-    "shy" to "\u00ad",
+    "thinsp" to " ",
+    "zwj" to "‍",
+    "zwnj" to "‌",
+    "shy" to "­",
 )
 
 /** One entity occurrence: `&name;`, `&#123;`, or `&#xAb;`. */
@@ -175,21 +175,12 @@ fun highlightSearchMatches(
     }
 }
 
-/**
- * A "word" for bionic reading: a run of characters that isn't whitespace and isn't Chinese or
- * Japanese script (Han, kana, CJK/full-width punctuation). Those languages don't put spaces
- * between words, so with a plain `\S+` a whole Japanese sentence was one "word" and its first
- * half went bold. Korean is deliberately not excluded: it spaces its words like English.
- */
-private val WORD_REGEX = Regex(
-    "[^\\s\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}\\u3000-\\u303F\\uFF00-\\uFFEF]+",
-)
+private val WORD_REGEX = Regex("\\S+")
 
 /**
  * Overlays "bionic reading" bold spans (roughly the first half of each word, a fixation-anchor
  * trick some readers find helps eyes track faster) on top of whatever spans [base] already has -
- * so it composes with real bold/italic from the source instead of replacing it. Chinese and
- * Japanese text is left alone (see [WORD_REGEX]); only Latin/Korean/number runs inside it get bold.
+ * so it composes with real bold/italic from the source instead of replacing it.
  */
 fun applyBionicReading(base: AnnotatedString): AnnotatedString = buildAnnotatedString {
     append(base)
