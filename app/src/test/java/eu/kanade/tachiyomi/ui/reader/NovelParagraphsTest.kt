@@ -134,8 +134,8 @@ class NovelParagraphsTest {
     }
 
     @Test
-    fun `syosetu style one p per line keeps the full width indent and drops blank lines`() {
-        // Syosetu: one <p id="L1"> per line, <p><br></p> as a blank line, lines indented with U+3000.
+    fun `one p per line with a full width indent keeps the indent and drops blank lines`() {
+        // Japanese web-novel markup (e.g. Syosetu): one <p id="L1"> per line, <p><br></p> as a blank line, lines indented with U+3000.
         val html = "<div class=\"js-novel-text p-novel__text\">\n<p id=\"L1\">　俺は34歳住所不定無職。</p>\n" +
             "<p id=\"L2\"><br></p>\n<p id=\"L3\">「寿命を短くする呪いが掛けられております」</p>\n</div>"
         // The wrapping div's tag stays glued to the first paragraph (the renderer drops it), and

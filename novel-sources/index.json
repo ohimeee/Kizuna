@@ -56,14 +56,6 @@
     "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=wtr-lab.com"
   },
   {
-    "id": "syosetu",
-    "name": "Syosetu (小説家になろう)",
-    "lang": "ja",
-    "version": "1.0.0",
-    "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/syosetu.js",
-    "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=syosetu.com"
-  },
-  {
     "id": "navernovel",
     "name": "Naver Webnovel (네이버 웹소설)",
     "lang": "ko",
