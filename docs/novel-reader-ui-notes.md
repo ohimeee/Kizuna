@@ -143,6 +143,42 @@ All backed by `NovelReaderPreferences.kt`.
 - Actions: open-in-WebView (only when the source provides a URL) and settings. Back arrow as the
   navigation icon.
 
+## AI translation (added 2026-11-25, 0.34.0)
+
+- **Top bar translate button** (文A, `NovelTranslateAction` in `NovelTranslationUi.kt`), between
+  search and WebView. Off: one tap switches translation on **for the whole novel** (stored per
+  novel in `NovelTranslationStore`, not a global preference). On: tinted primary, and a tap opens a
+  menu: Show original (= switch off), Glossary, Retranslate chapter.
+- **The translation replaces `state.paragraphs`**; the view model keeps the original separately.
+  Both always have the same paragraph count (`NovelTranslator` enforces 1:1 alignment), so scroll
+  position, saved progress, the percent, search and the seekbar all keep working across the swap
+  with no changes. Don't add a second paragraph list to the UI - that's what this avoids.
+- **Status banner** (`NovelTranslationStatus`) for "Translating… part N of M" and failures (Retry /
+  Dismiss). It is drawn over the page **even while the chrome is hidden**, top-center, and shifts
+  below the top bar when the bar is showing. While translating, the original stays readable.
+- **Glossary** is a `ModalBottomSheet` (`NovelGlossarySheet`) opened from the translate menu, with
+  Add / Import CSV / Export CSV / Retranslate. CSV is OpenNovel's `type,raw_term,translated_term,gender`.
+  Glossary edits do **not** invalidate saved translations (that would re-bill every cached chapter
+  after each edit); Retranslate applies them to the current chapter.
+- **Translation settings live only in global Settings > Reader > Novel > Translation**, a deliberate
+  exception to the "mirror every preference in both UIs" rule above: an API key/provider/model is
+  set once, and the reader's button already covers per-novel on/off. The API key preference is
+  `Preference.privateKey(...)` so it never goes into backups, and its subtitle shows only the last
+  4 characters (or "N keys set").
+- **Several API keys** can go in that one field, separated by commas/spaces/new lines (asked for
+  2026-11-25: three Gemini keys as daily-quota backups). `NovelTranslator.callWithKeyFailover`
+  hands a request that hits 429 (quota), 401/403 or Gemini's 400 "API key not valid" to the next
+  key; requests also start on the next key in turn, spreading load. Free Gemini quota is per
+  Google Cloud project, so the backups only help if each key comes from a different project.
+- **Free-tier quota decides the request shape, not speed.** The user's free tier (2026-11-25) for
+  Gemini 3.8 Flash was **5 requests/minute, 20/day, 250K tokens/minute**. A first speed pass split
+  chapters into ~3k-char chunks, ran 4 in parallel and prefetched the next chapter: it hit 10 RPM
+  and exhausted the day in a few chapters, every request failing. Rejected for that reason. Now:
+  chunks up to 8,000 chars (most chapters = **one request**), at most 2 in parallel, one chapter
+  of prefetch, a single wait when a 429 says it clears within 30s, and on a daily 429 the default
+  model falls back to Flash-Lite (`gemini-flash-lite-latest`, separate quota). Partial results
+  still stream in for chapters long enough to need several chunks.
+
 ## System bar icon tint
 
 `NovelReaderActivity` sets `isAppearanceLightStatusBars`/`isAppearanceLightNavigationBars` from the

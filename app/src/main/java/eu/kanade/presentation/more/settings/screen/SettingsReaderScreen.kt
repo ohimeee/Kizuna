@@ -23,6 +23,7 @@ import eu.kanade.presentation.more.settings.widget.BasePreferenceWidget
 import eu.kanade.presentation.more.settings.widget.PrefsHorizontalPadding
 import eu.kanade.tachiyomi.ui.reader.setting.NovelFontFamily
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.TranslationProvider
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderTheme
 import eu.kanade.tachiyomi.ui.reader.setting.NovelTextAlign
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
@@ -95,6 +96,7 @@ object SettingsReaderScreen : SearchableSettings {
                 tabSwitcher,
                 getNovelReaderGroup(novelReaderPreferences = novelReaderPref),
                 getNovelGeneralGroup(novelReaderPreferences = novelReaderPref),
+                getNovelTranslationGroup(novelReaderPreferences = novelReaderPref),
             )
         }
 
@@ -148,6 +150,63 @@ object SettingsReaderScreen : SearchableSettings {
      * NovelReaderScreen's own in-chapter settings sheet already uses for these same enums. */
     private fun enumLabel(name: String) = name.split("_").joinToString(" ") {
         it.lowercase().replaceFirstChar(Char::uppercase)
+    }
+
+    /**
+     * AI translation settings. Only here, not in the reader's in-chapter sheet: an API key is set
+     * once, and the reader's translate button already covers the per-novel on/off.
+     */
+    @Composable
+    private fun getNovelTranslationGroup(novelReaderPreferences: NovelReaderPreferences): Preference.PreferenceGroup {
+        val provider by novelReaderPreferences.translationProvider.collectAsState()
+        val apiKey by novelReaderPreferences.translationApiKey.collectAsState()
+        val model by novelReaderPreferences.translationModel.collectAsState()
+        val isOpenAiCompatible = provider == TranslationProvider.OPENAI_COMPATIBLE
+
+        return Preference.PreferenceGroup(
+            title = "Translation",
+            preferenceItems = listOf(
+                Preference.PreferenceItem.InfoPreference(
+                    title = "Translate novels with AI from the reader's translate button. Gemini has a free " +
+                        "tier: create a key at aistudio.google.com/apikey and paste it below. Chapters are " +
+                        "sent to the provider you pick; translations are saved on this device.",
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = novelReaderPreferences.translationProvider,
+                    entries = TranslationProvider.entries.associateWith { it.label },
+                    title = "Provider",
+                ),
+                Preference.PreferenceItem.EditTextPreference(
+                    preference = novelReaderPreferences.translationApiKey,
+                    title = "API key",
+                    // Never echo the key itself: settings screens get screenshotted.
+                    subtitle = apiKey.split(Regex("""[,;\s]+""")).filter(String::isNotBlank).let { keys ->
+                        when (keys.size) {
+                            0 -> "Not set. Several keys can be separated by commas; when one runs out, the next is used"
+                            1 -> "Set (ends in ${keys[0].takeLast(4)})"
+                            else -> "${keys.size} keys set; the next is used when one runs out"
+                        }
+                    },
+                ),
+                Preference.PreferenceItem.EditTextPreference(
+                    preference = novelReaderPreferences.translationModel,
+                    title = "Model",
+                    subtitle = model.ifBlank {
+                        provider.defaultModel.ifBlank { "Required, e.g. deepseek/deepseek-chat" }
+                            .let { if (provider.defaultModel.isNotBlank()) "Default ($it)" else it }
+                    },
+                ),
+                Preference.PreferenceItem.EditTextPreference(
+                    preference = novelReaderPreferences.translationBaseUrl,
+                    title = "API base URL",
+                    visible = isOpenAiCompatible,
+                ),
+                Preference.PreferenceItem.EditTextPreference(
+                    preference = novelReaderPreferences.translationTargetLanguage,
+                    title = "Translate into",
+                ),
+            ),
+        )
     }
 
     @Composable

@@ -136,6 +136,7 @@ import eu.kanade.tachiyomi.ui.reader.NovelReaderViewModel
 import eu.kanade.tachiyomi.ui.reader.novelProgressPercent
 import eu.kanade.tachiyomi.ui.reader.setting.NovelFontFamily
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.translation.GlossaryEntry
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderTheme
 import eu.kanade.tachiyomi.ui.reader.setting.NovelTextAlign
 import kotlinx.coroutines.CancellationException
@@ -294,6 +295,7 @@ fun NovelReaderScreen(
     onSelectChapter: (Long) -> Unit,
     onOpenInWebView: (() -> Unit)? = null,
     onControlsVisibilityChanged: (Boolean) -> Unit = {},
+    translation: NovelTranslationCallbacks = NovelTranslationCallbacks(),
 ) {
     val theme by preferences.theme.collectAsState()
     val backgroundColor = if (theme == NovelReaderTheme.FOLLOW_SYSTEM) {
@@ -316,6 +318,7 @@ fun NovelReaderScreen(
 
     var showSettings by remember { mutableStateOf(false) }
     var showChapterList by remember { mutableStateOf(false) }
+    var showGlossary by remember { mutableStateOf(false) }
 
     // The chapter panel is a hand-rolled overlay rather than a Material sheet, so Back doesn't
     // dismiss it for free - without this it would fall through and exit the reader entirely.
@@ -528,6 +531,12 @@ fun NovelReaderScreen(
                             IconButton(onClick = { searchVisible = true }) {
                                 Icon(Icons.Filled.Search, contentDescription = "Search in chapter")
                             }
+                            NovelTranslateAction(
+                                enabled = state.translationEnabled,
+                                onToggle = translation.onToggle,
+                                onOpenGlossary = { showGlossary = true },
+                                onRetranslate = translation.onRetranslate,
+                            )
                             if (onOpenInWebView != null) {
                                 IconButton(onClick = onOpenInWebView) {
                                     Icon(Icons.Filled.Public, contentDescription = null)
@@ -640,6 +649,20 @@ fun NovelReaderScreen(
                 onClose = { showChapterList = false },
             )
         }
+
+        // Translation progress / failure. Drawn last so it sits above the page and the chrome;
+        // pushed below the top bar while the bar is showing so it never covers its buttons.
+        NovelTranslationStatus(
+            isTranslating = state.isTranslating,
+            progress = state.translationProgress,
+            error = state.translationError,
+            onRetry = translation.onRetranslate,
+            onDismissError = translation.onDismissError,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = if (showControls && !showChapterList) 72.dp else 12.dp),
+        )
     }
 
     if (showSettings) {
@@ -650,7 +673,37 @@ fun NovelReaderScreen(
             NovelReaderSettingsSheet(preferences = preferences)
         }
     }
+
+    if (showGlossary) {
+        ModalBottomSheet(
+            onDismissRequest = { showGlossary = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            NovelGlossarySheet(
+                entries = state.glossary,
+                onSave = translation.onSaveGlossaryEntry,
+                onDelete = translation.onDeleteGlossaryEntry,
+                onImport = translation.onImportGlossary,
+                onExport = translation.onExportGlossary,
+                onRetranslate = {
+                    showGlossary = false
+                    translation.onRetranslate()
+                },
+            )
+        }
+    }
 }
+
+/** Translation actions, grouped so the screen's parameter list doesn't grow by six. */
+data class NovelTranslationCallbacks(
+    val onToggle: () -> Unit = {},
+    val onRetranslate: () -> Unit = {},
+    val onDismissError: () -> Unit = {},
+    val onSaveGlossaryEntry: (index: Int?, entry: GlossaryEntry) -> Unit = { _, _ -> },
+    val onDeleteGlossaryEntry: (index: Int) -> Unit = {},
+    val onImportGlossary: () -> Unit = {},
+    val onExportGlossary: () -> Unit = {},
+)
 
 /**
  * Chapter picker behind the nav bar's list button: a slide-in panel over the page, painted from

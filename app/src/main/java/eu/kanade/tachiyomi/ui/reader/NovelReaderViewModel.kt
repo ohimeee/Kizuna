@@ -14,9 +14,20 @@ import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.NovelSource
+import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.translation.GlossaryCsv
+import eu.kanade.tachiyomi.ui.reader.translation.GlossaryEntry
+import eu.kanade.tachiyomi.ui.reader.translation.NovelTranslationConfig
+import eu.kanade.tachiyomi.ui.reader.translation.NovelTranslationStore
+import eu.kanade.tachiyomi.ui.reader.translation.NovelTranslator
+import eu.kanade.tachiyomi.ui.reader.translation.TranslationException
+import eu.kanade.tachiyomi.ui.reader.translation.TranslationSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
@@ -25,6 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import mihon.core.metro.AppCoroutineScope
@@ -65,6 +77,8 @@ class NovelReaderViewModel(
     private val trackPreferences: TrackPreferences,
     private val trackChapter: TrackChapter,
     private val upsertNovelChapterProgress: UpsertNovelChapterProgress,
+    private val network: NetworkHelper,
+    private val novelReaderPreferences: NovelReaderPreferences,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -93,6 +107,25 @@ class NovelReaderViewModel(
      * fetch itself failed) - in that case there is no `state.chapter` to retry from.
      */
     private var lastTarget: Pair<Long, Long>? = null
+
+    // --- AI translation ---
+    private val translationStore by lazy { NovelTranslationStore(context) }
+    private val translator by lazy { NovelTranslator(network.client) }
+    private var novelKey: String? = null
+    private var translationConfig = NovelTranslationConfig()
+
+    /** The chapter as the source gave it; `state.paragraphs` holds whichever version is shown. */
+    private var originalParagraphs: List<String> = emptyList()
+    private var translatedParagraphs: List<String>? = null
+    private var translateJob: Job? = null
+    private var prefetchJob: Job? = null
+
+    /**
+     * Translations in progress by chapter id, shared by the reader and the next-chapter prefetch
+     * so a chapter is never translated twice at once (opening a chapter that is still being
+     * prefetched just waits for that job instead of starting another).
+     */
+    private val inFlight = java.util.concurrent.ConcurrentHashMap<Long, Deferred<List<String>>>()
 
     fun needsInit() = !initialized
 
@@ -130,6 +163,13 @@ class NovelReaderViewModel(
             this.source = source
             incognitoMode = getIncognitoState.await(manga.source)
 
+            val key = translationStore.novelKey(manga.source, manga.url)
+            novelKey = key
+            translationConfig = withContext(Dispatchers.IO) { translationStore.loadConfig(key) }
+            mutableState.update {
+                it.copy(translationEnabled = translationConfig.enabled, glossary = translationConfig.glossary)
+            }
+
             chapterList = getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true)
                 .sortedWith(getChapterSort(manga, sortDescending = false))
             mutableState.update { it.copy(chapters = chapterList) }
@@ -148,7 +188,12 @@ class NovelReaderViewModel(
     }
 
     private suspend fun openChapter(source: NovelSource, chapter: Chapter) {
-        mutableState.update { it.copy(isLoading = true, error = null) }
+        translateJob?.cancel()
+        originalParagraphs = emptyList()
+        translatedParagraphs = null
+        mutableState.update {
+            it.copy(isLoading = true, error = null, isTranslating = false, translationProgress = null, translationError = null)
+        }
         chapterReadStartTime = System.currentTimeMillis()
 
         // Computed up front (not just on success) so a failed load still lets the error screen's
@@ -162,10 +207,7 @@ class NovelReaderViewModel(
 
         try {
             val manga = manga ?: error("Manga not loaded")
-            val text = downloadManager.getChapterTextIfDownloaded(source, manga, chapter)
-                ?: withTimeout(30_000) { source.getChapterText(chapter.toSChapter()) }
-
-            val bodyParagraphs = splitNovelParagraphs(text)
+            val bodyParagraphs = fetchBodyParagraphs(source, manga, chapter)
 
             // Emptiness must be judged on the body alone - withChapterTitle() below always
             // prepends a non-blank title, which would otherwise mask a completely empty chapter.
@@ -192,12 +234,14 @@ class NovelReaderViewModel(
             }
 
             val paragraphs = withChapterTitle(chapter.name, bodyParagraphs)
+            originalParagraphs = paragraphs
 
             mutableState.update {
                 it.copy(
                     isLoading = false,
                     chapter = chapter,
                     paragraphs = paragraphs,
+                    showingTranslation = false,
                     initialParagraphIndex = chapter.lastPageRead
                         .coerceIn(0, (paragraphs.size - 1).coerceAtLeast(0)),
                     hasPrevChapter = hasPrevChapter,
@@ -206,6 +250,7 @@ class NovelReaderViewModel(
                     nextChapterName = nextChapterName,
                 )
             }
+            if (translationConfig.enabled) startTranslation(chapter, force = false)
         } catch (e: TimeoutCancellationException) {
             // TimeoutCancellationException is itself a CancellationException, so this must be
             // caught ahead of the generic CancellationException rethrow below - otherwise a real
@@ -380,6 +425,204 @@ class NovelReaderViewModel(
         }
     }
 
+    // ---------------------------------------------------------------------------------------
+    // AI translation
+    // ---------------------------------------------------------------------------------------
+
+    /** Switches translation on or off for this whole novel. Off shows the original right away. */
+    fun toggleTranslation() {
+        val enabled = !translationConfig.enabled
+        updateTranslationConfig(translationConfig.copy(enabled = enabled))
+        val chapter = state.value.chapter ?: return
+        if (enabled) {
+            startTranslation(chapter, force = false)
+        } else {
+            translateJob?.cancel()
+            showParagraphs(originalParagraphs)
+            mutableState.update { it.copy(isTranslating = false, translationProgress = null, translationError = null) }
+        }
+    }
+
+    /** Throws away this chapter's saved translation and translates it again (e.g. after glossary edits). */
+    fun retranslateChapter() {
+        val chapter = state.value.chapter ?: return
+        val key = novelKey ?: return
+        translationStore.deleteChapter(key, chapter.url, novelReaderPreferences.translationTargetLanguage.get())
+        translatedParagraphs = null
+        startTranslation(chapter, force = true)
+    }
+
+    fun dismissTranslationError() {
+        mutableState.update { it.copy(translationError = null) }
+    }
+
+    /** Adds [entry], or replaces the entry at [index]. */
+    fun saveGlossaryEntry(index: Int?, entry: GlossaryEntry) {
+        val glossary = translationConfig.glossary.toMutableList()
+        if (index != null && index in glossary.indices) glossary[index] = entry else glossary += entry
+        updateTranslationConfig(translationConfig.copy(glossary = glossary))
+    }
+
+    fun deleteGlossaryEntry(index: Int) {
+        val glossary = translationConfig.glossary.toMutableList()
+        if (index !in glossary.indices) return
+        glossary.removeAt(index)
+        updateTranslationConfig(translationConfig.copy(glossary = glossary))
+    }
+
+    /** Merges a CSV glossary in; a row whose raw term already exists replaces that entry. Returns the row count. */
+    fun importGlossaryCsv(text: String): Int {
+        val imported = GlossaryCsv.parse(text)
+        if (imported.isEmpty()) return 0
+        val byRaw = LinkedHashMap<String, GlossaryEntry>()
+        translationConfig.glossary.forEach { byRaw[it.raw] = it }
+        imported.forEach { byRaw[it.raw] = it }
+        updateTranslationConfig(translationConfig.copy(glossary = byRaw.values.toList()))
+        return imported.size
+    }
+
+    fun exportGlossaryCsv(): String = GlossaryCsv.export(translationConfig.glossary)
+
+    private fun updateTranslationConfig(config: NovelTranslationConfig) {
+        translationConfig = config
+        mutableState.update { it.copy(translationEnabled = config.enabled, glossary = config.glossary) }
+        val key = novelKey ?: return
+        appScope.launch(Dispatchers.IO) { translationStore.saveConfig(key, config) }
+    }
+
+    private fun currentTranslationSettings() = TranslationSettings(
+        provider = novelReaderPreferences.translationProvider.get(),
+        apiKey = novelReaderPreferences.translationApiKey.get().trim(),
+        model = novelReaderPreferences.translationModel.get().trim(),
+        baseUrl = novelReaderPreferences.translationBaseUrl.get().trim(),
+        targetLanguage = novelReaderPreferences.translationTargetLanguage.get().trim().ifBlank { "English" },
+    )
+
+    private fun startTranslation(chapter: Chapter, force: Boolean) {
+        val key = novelKey ?: return
+        val original = originalParagraphs
+        if (original.isEmpty()) return
+        translatedParagraphs?.let {
+            if (!force) {
+                showParagraphs(it)
+                prefetchNext(chapter)
+                return
+            }
+        }
+        val settings = currentTranslationSettings()
+        if (force) inFlight.remove(chapter.id)?.cancel()
+
+        translateJob?.cancel()
+        translateJob = viewModelScope.launch {
+            // A saved translation shows straight away, without flashing the "Translating" banner.
+            val saved = if (force) {
+                null
+            } else {
+                withContext(Dispatchers.IO) { translationStore.loadChapter(key, chapter.url, settings.targetLanguage, original) }
+            }
+            if (saved != null) {
+                applyTranslation(chapter, saved)
+                prefetchNext(chapter)
+                return@launch
+            }
+            mutableState.update { it.copy(isTranslating = true, translationProgress = null, translationError = null) }
+            try {
+                applyTranslation(chapter, translationFor(chapter, original, settings).await())
+                prefetchNext(chapter)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TranslationException) {
+                mutableState.update { it.copy(isTranslating = false, translationProgress = null, translationError = e.message) }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Translation failed for ${chapter.url}" }
+                mutableState.update {
+                    it.copy(isTranslating = false, translationProgress = null, translationError = e.message ?: "Translation failed")
+                }
+            }
+        }
+    }
+
+    /**
+     * The translation of [chapter]: saved one if present, else a new one that is saved when done.
+     * While it runs, every finished chunk is shown right away if the reader is on that chapter,
+     * so the start of a long chapter is readable long before the end arrives.
+     */
+    private fun translationFor(chapter: Chapter, original: List<String>, settings: TranslationSettings): Deferred<List<String>> {
+        inFlight[chapter.id]?.takeIf { it.isActive }?.let { return it }
+        val key = novelKey ?: error("No novel loaded")
+        val job = viewModelScope.async {
+            withContext(Dispatchers.IO) { translationStore.loadChapter(key, chapter.url, settings.targetLanguage, original) }
+                ?: translator.translate(original, translationConfig.glossary, settings) { partial, done, total ->
+                    val onThisChapter = state.value.chapter?.id == chapter.id && originalParagraphs.size == original.size
+                    if (onThisChapter && translationConfig.enabled && translatedParagraphs == null) {
+                        showParagraphs(partial.mapIndexed { i, text -> text ?: originalParagraphs[i] })
+                        mutableState.update { it.copy(translationProgress = done to total) }
+                    }
+                }.also { translated ->
+                    withContext(Dispatchers.IO) {
+                        translationStore.saveChapter(key, chapter.url, settings.targetLanguage, original, translated)
+                    }
+                }
+        }
+        inFlight[chapter.id] = job
+        job.invokeOnCompletion { inFlight.remove(chapter.id, job) }
+        return job
+    }
+
+    /**
+     * Translates the next chapter in the background once the current one is done, so tapping Next
+     * opens it already translated. One chapter ahead only: each one costs an API call.
+     */
+    private fun prefetchNext(chapter: Chapter) {
+        if (!translationConfig.enabled) return
+        val source = source ?: return
+        val manga = manga ?: return
+        val key = novelKey ?: return
+        val next = chapterList.getOrNull(chapterList.indexOfFirst { it.id == chapter.id } + 1) ?: return
+        if (inFlight[next.id]?.isActive == true) return
+        prefetchJob?.cancel()
+        prefetchJob = viewModelScope.launch {
+            try {
+                val body = fetchBodyParagraphs(source, manga, next)
+                if (body.all { it.isBlank() }) return@launch
+                val original = withChapterTitle(next.name, body)
+                val settings = currentTranslationSettings()
+                val saved = withContext(Dispatchers.IO) {
+                    translationStore.loadChapter(key, next.url, settings.targetLanguage, original)
+                }
+                if (saved == null) translationFor(next, original, settings).await()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "Prefetch translation failed for ${next.url}" }
+            }
+        }
+    }
+
+    /** The chapter's body paragraphs, from a download if there is one, else from the source. */
+    private suspend fun fetchBodyParagraphs(source: NovelSource, manga: Manga, chapter: Chapter): List<String> {
+        val text = downloadManager.getChapterTextIfDownloaded(source, manga, chapter)
+            ?: withTimeout(30_000) { source.getChapterText(chapter.toSChapter()) }
+        return splitNovelParagraphs(text)
+    }
+
+    /** Shows [translated] if the reader is still on [chapter] with translation switched on. */
+    private fun applyTranslation(chapter: Chapter, translated: List<String>) {
+        if (state.value.chapter?.id != chapter.id || translated.size != originalParagraphs.size) return
+        translatedParagraphs = translated
+        mutableState.update { it.copy(isTranslating = false, translationProgress = null) }
+        if (translationConfig.enabled) showParagraphs(translated)
+    }
+
+    /**
+     * Swaps the displayed text. Both versions always have the same paragraph count, so the reader
+     * keeps its scroll position, progress and percent across the swap.
+     */
+    private fun showParagraphs(paragraphs: List<String>) {
+        if (paragraphs.isEmpty()) return
+        mutableState.update { it.copy(paragraphs = paragraphs, showingTranslation = paragraphs !== originalParagraphs) }
+    }
+
     private fun loadAdjacentChapter(offset: Int, markCurrentRead: Boolean) {
         val current = state.value.chapter ?: return
         val index = chapterList.indexOfFirst { it.id == current.id }
@@ -472,5 +715,14 @@ class NovelReaderViewModel(
         val prevChapterName: String? = null,
         val nextChapterName: String? = null,
         val error: String? = null,
+        /** Translation is switched on for this novel. */
+        val translationEnabled: Boolean = false,
+        /** [paragraphs] currently holds the translation rather than the original. */
+        val showingTranslation: Boolean = false,
+        val isTranslating: Boolean = false,
+        /** Chunks done / total while a long chapter translates. */
+        val translationProgress: Pair<Int, Int>? = null,
+        val translationError: String? = null,
+        val glossary: List<GlossaryEntry> = emptyList(),
     )
 }

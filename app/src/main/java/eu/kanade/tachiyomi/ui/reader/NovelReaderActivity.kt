@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
@@ -19,16 +20,20 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import eu.kanade.presentation.reader.NovelReaderScreen
+import eu.kanade.presentation.reader.NovelTranslationCallbacks
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.NovelReaderTheme
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
+import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.setComposeContent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mihon.app.di.AppGraph
 import mihon.core.metro.metroGraph
 import tachiyomi.presentation.core.util.collectAsState
@@ -55,6 +60,29 @@ class NovelReaderActivity : BaseActivity() {
     private val preferences: NovelReaderPreferences by lazy { graph.novelReaderPreferences }
 
     private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
+
+    // Glossary CSV import/export through the system file picker (no storage permission needed).
+    private val importGlossary = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } }.getOrNull()
+            }
+            val count = text?.let(viewModel::importGlossaryCsv) ?: 0
+            toast(if (count > 0) "Imported $count glossary entries" else "No glossary entries found in that file")
+        }
+    }
+
+    private val exportGlossary = registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        uri ?: return@registerForActivityResult
+        val csv = viewModel.exportGlossaryCsv()
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { contentResolver.openOutputStream(uri)?.use { it.write(csv.toByteArray()) } }.isSuccess
+            }
+            toast(if (ok) "Glossary exported" else "Couldn't save the glossary")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -132,6 +160,20 @@ class NovelReaderActivity : BaseActivity() {
                 onSelectChapter = viewModel::openChapterById,
                 onOpenInWebView = { openInWebView() },
                 onControlsVisibilityChanged = { controlsVisible = it },
+                translation = remember {
+                    NovelTranslationCallbacks(
+                        onToggle = viewModel::toggleTranslation,
+                        onRetranslate = viewModel::retranslateChapter,
+                        onDismissError = viewModel::dismissTranslationError,
+                        onSaveGlossaryEntry = viewModel::saveGlossaryEntry,
+                        onDeleteGlossaryEntry = viewModel::deleteGlossaryEntry,
+                        onImportGlossary = { importGlossary.launch(arrayOf("text/*", "application/csv", "application/octet-stream")) },
+                        onExportGlossary = {
+                            val name = viewModel.state.value.mangaTitle?.take(60)?.replace(Regex("""[\\/:*?"<>|]"""), "_") ?: "novel"
+                            exportGlossary.launch("$name glossary.csv")
+                        },
+                    )
+                },
             )
         }
     }

@@ -55,6 +55,27 @@ class NovelReaderPreferences(
 
     val autoScrollSpeed: Preference<Int> = preferenceStore.getInt("pref_novel_reader_auto_scroll_speed", 5)
 
+    // --- AI translation (per-novel on/off and glossary live in NovelTranslationStore) ---
+
+    val translationProvider: Preference<TranslationProvider> = preferenceStore.getEnum(
+        "pref_novel_translation_provider",
+        TranslationProvider.GEMINI,
+    )
+
+    /** Private: kept out of backups, since a backup file is easy to share by accident. */
+    val translationApiKey: Preference<String> =
+        preferenceStore.getString(Preference.privateKey("pref_novel_translation_api_key"), "")
+
+    /** Blank means the provider's default ([TranslationProvider.defaultModel]). */
+    val translationModel: Preference<String> = preferenceStore.getString("pref_novel_translation_model", "")
+
+    /** Only used by [TranslationProvider.OPENAI_COMPATIBLE]. */
+    val translationBaseUrl: Preference<String> =
+        preferenceStore.getString("pref_novel_translation_base_url", "https://openrouter.ai/api/v1")
+
+    val translationTargetLanguage: Preference<String> =
+        preferenceStore.getString("pref_novel_translation_target_language", "English")
+
     companion object {
         const val MIN_FONT_SIZE = 10
         const val MAX_FONT_SIZE = 32
@@ -65,6 +86,17 @@ class NovelReaderPreferences(
         const val MIN_AUTO_SCROLL_SPEED = 1
         const val MAX_AUTO_SCROLL_SPEED = 10
     }
+}
+
+enum class TranslationProvider(val label: String, val defaultModel: String, val fallbackModel: String?) {
+    /**
+     * Google's Gemini API; has a free tier with a key from aistudio.google.com. The newest Flash
+     * is often briefly overloaded (503), so Flash-Lite stands in when it stays unavailable.
+     */
+    GEMINI("Gemini", "gemini-flash-latest", "gemini-flash-lite-latest"),
+
+    /** Any `/chat/completions` API: OpenRouter, DeepSeek, OpenAI, a local server... No default model. */
+    OPENAI_COMPATIBLE("OpenAI-compatible", "", null),
 }
 
 enum class NovelReaderTheme(val backgroundColor: Long, val textColor: Long) {
