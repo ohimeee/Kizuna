@@ -23,7 +23,7 @@ Register(JSON.stringify({
   name: "Naver Webnovel (네이버 웹소설)",
   lang: "ko",
   baseUrl: BASE,
-  version: "1.0.1",
+  version: "1.0.2",
   supportsLatest: true,
   iconUrl: "https://ssl.pstatic.net/static/m/novel/icon_2020/android_96x96_xhdpi.png",
   filters: [
@@ -204,9 +204,22 @@ globalThis.source = {
     return JSON.stringify(chapters);
   },
 
+  // Naver puts a whole chapter in one or a few <p> tags and separates paragraphs with blank lines
+  // inside them; single newlines are just the author wrapping lines for a phone screen. The text
+  // is cut out of the raw page by regex on purpose: selectHtml goes through Jsoup's pretty-printer,
+  // which collapses every newline to a space and turned whole chapters into one paragraph.
   chapterContent: function (url) {
     var html = Http.get(url, "{}");
-    return selectHtml(html, "#con_data");
+    var m = html.match(/<div[^>]*id="con_data"[^>]*>([\s\S]*?)<\/div>/);
+    if (!m) return selectHtml(html, "#con_data");
+    var paragraphs = m[1]
+      .replace(/\r\n?/g, "\n") // Naver sends CRLF line endings
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/?p\b[^>]*>/gi, "\n\n")
+      .split(/\n[ \t]*\n/)
+      .map(function (p) { return p.replace(/\s*\n\s*/g, " ").trim(); })
+      .filter(function (p) { return p.length > 0; });
+    return paragraphs.map(function (p) { return "<p>" + p + "</p>"; }).join("");
   },
 
 };
