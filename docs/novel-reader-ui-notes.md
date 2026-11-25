@@ -35,6 +35,19 @@ how the in-chapter sheet already does it - this fork doesn't localize the novel-
   - `splitNovelParagraphs()` (was `NovelReaderViewModel.splitParagraphs()`) must keep inline tags intact when splitting into
     paragraphs — only strip block-level `<p>` wrappers.
 
+## Bionic reading and Chinese/Japanese text (2026-11-25)
+
+`applyBionicReading()` bolds roughly the first half of each "word". A word used to be any `\S+`
+run, but Chinese and Japanese put no spaces between words, so a whole sentence was one word and
+half of it went bold. `WORD_REGEX` now also stops at Han characters, kana and CJK/full-width
+punctuation, so those scripts get no bionic bold at all; Latin and number runs inside them still
+do ("Lv.99", "HP").
+
+**Korean is deliberately not excluded.** It spaces its words like English, so per-word bionic
+bold works on it as is. Rejected: skipping bionic for a whole chapter when its source `lang` is
+`ja`/`zh` - the reader doesn't know the source language, and mixed-script paragraphs (a Japanese
+sentence quoting an English skill name) still deserve bold on the Latin part.
+
 ## Paragraph splitting: whitespace and `<br>` (2026-11-08)
 
 `splitNovelParagraphs()` (`NovelParagraphs.kt`, called by `NovelReaderViewModel`; it used to be the

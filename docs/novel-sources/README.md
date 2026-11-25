@@ -18,7 +18,9 @@ A plugin script must, at the top level:
    Register(JSON.stringify({
      id: "example-novel-site",  // stable slug; changing it creates a new library entry
      name: "Example Novel Site",
-     lang: "en",
+     lang: "en",                // ISO 639-1 of the text the reader shows ("ja", "ko" for raws).
+                                 // Browse hides sources whose language is switched off, so
+                                 // installing a plugin from the catalog switches its language on.
      baseUrl: "https://example.com",
      version: "1.0.0",          // optional, default "1.0.0"
      supportsLatest: true,      // optional, default true
