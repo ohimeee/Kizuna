@@ -67,8 +67,8 @@
     "id": "navernovel",
     "name": "Naver Webnovel (네이버 웹소설)",
     "lang": "ko",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "fileUrl": "https://raw.githubusercontent.com/ohimeee/Kizuna/main/novel-sources/navernovel.js",
-    "iconUrl": "https://www.google.com/s2/favicons?sz=64&domain=novel.naver.com"
+    "iconUrl": "https://ssl.pstatic.net/static/m/novel/icon_2020/android_96x96_xhdpi.png"
   }
 ]

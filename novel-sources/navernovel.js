@@ -23,9 +23,9 @@ Register(JSON.stringify({
   name: "Naver Webnovel (네이버 웹소설)",
   lang: "ko",
   baseUrl: BASE,
-  version: "1.0.0",
+  version: "1.0.1",
   supportsLatest: true,
-  iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=novel.naver.com",
+  iconUrl: "https://ssl.pstatic.net/static/m/novel/icon_2020/android_96x96_xhdpi.png",
   filters: [
     {
       id: "section",
