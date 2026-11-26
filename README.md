@@ -17,6 +17,8 @@ Discover and read manga, webtoons, comics, and light novels — in one unified l
 
 *Requires Android 8.0 or higher.*
 
+On Windows? Get [Kizuna Desktop](https://github.com/ohimeee/Kizuna-Desktop/releases/latest), which reads light novels from the same sources.
+
 ## Support
 
 Kizuna is free and open source. If it makes your reading better, you can tip the developer on Ko-fi.
