@@ -21,3 +21,7 @@ graphify-out/
 
 # Obsidian local workspace config
 .obsidian/
+
+# Local notes for Claude Code (kept out of the public repo)
+CLAUDE.md
+.claude/
