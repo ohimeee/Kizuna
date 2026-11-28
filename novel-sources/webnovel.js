@@ -51,7 +51,7 @@ Register(JSON.stringify({
   name: "Webnovel",
   lang: "en",
   baseUrl: "https://m.webnovel.com",
-  version: "4.4.0",
+  version: "4.5.0",
   supportsLatest: true,
   iconUrl: "https://www.google.com/s2/favicons?sz=64&domain=webnovel.com",
   // Genre slugs/labels and sort codes taken from LNReader's real, working Webnovel plugin. Genre:
@@ -292,21 +292,31 @@ globalThis.source = {
     var bookId = bookIdFromUrl(novelUrl);
     var html = Http.get(BASE_URL + "book/" + bookId + "/catalog", "{}");
 
-    var match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-    if (!match) return JSON.stringify([]);
-
-    var data;
-    try { data = JSON.parse(match[1]); } catch (e) { return JSON.stringify([]); }
-
-    var chapterMap = (
-      data.props &&
-      data.props.initialState &&
-      data.props.initialState.entities &&
-      data.props.initialState.entities.chapter
-    ) || {};
-
-    var chapters = Object.keys(chapterMap)
-      .map(function (id) { return chapterMap[id]; })
+    // The catalog page is server-rendered HTML (checked live 2026-11-28; it used to carry a
+    // __NEXT_DATA__ JSON blob, which is gone). Each chapter is
+    //   <li ... data-cid="{chapterId}"> <a href="/book/{slug}_{bookId}/{slug}_{chapterId}" title="{name}">
+    //     <i class="... _num ...">{index}</i> [<svg><use xlink:href="#i-lock"/></svg>] ...
+    // The lock icon marks a chapter that needs unlocking. URLs stay "/book/{bookId}/{chapterId}"
+    // as before, so chapters already in people's libraries keep their read progress.
+    var decode = function (s) {
+      return String(s).replace(/&#39;|&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
+    };
+    var re = /<li[^>]*\bdata-cid="(\d+)"[^>]*>([\s\S]*?)<\/li>/g, m, seen = {}, chapters = [];
+    while ((m = re.exec(html))) {
+      var cid = m[1], body = m[2];
+      if (seen[cid]) continue;
+      seen[cid] = true;
+      var num = body.match(/class="[^"]*\b_num\b[^"]*"[^>]*>\s*(\d+)\s*</);
+      var title = body.match(/<a[^>]*\btitle="([^"]*)"/) || body.match(/<strong[^>]*>([\s\S]*?)<\/strong>/);
+      chapters.push({
+        chapterId: cid,
+        chapterIndex: num ? parseInt(num[1], 10) : 0,
+        chapterName: title ? decode(title[1]).trim() : "",
+        locked: /#i-lock/.test(body),
+      });
+    }
+    chapters = chapters
       .filter(function (ch) { return ch.chapterIndex >= 1; })
       .sort(function (a, b) { return a.chapterIndex - b.chapterIndex; });
 
@@ -315,7 +325,7 @@ globalThis.source = {
         name: chapterDisplayName(ch),
         url: BASE_URL + "book/" + bookId + "/" + ch.chapterId,
         chapterNumber: ch.chapterIndex,
-        locked: ch.isAuth === 0,
+        locked: ch.locked,
       };
     }));
   },
